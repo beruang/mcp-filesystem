@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+#
+# pre-commit — production gate for mcp-filesystem-rs
+#
+# Runs: formatter → linter → tests (optional)
+# Block on: style violations, lint errors, test failures
+# Skip tests:   SKIP_TESTS=1 git commit ...
+# Skip all:     SKIP_CHECKS=1 git commit ...
+# Test-only:    TEST_ONLY=1 git commit ...
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+PASS=0
+FAIL=0
+START_TIME=$(date +%s)
+
+# ── helpers ────────────────────────────────────────────────────────────────
+
+banner()  { printf "${CYAN}══ %s ══${NC}\n" "$*"; }
+ok()      { printf "  ${GREEN}✓ %s${NC}\n" "$*"; PASS=$((PASS + 1)); }
+fail()    { printf "  ${RED}✗ %s${NC}\n" "$*"; FAIL=$((FAIL + 1)); }
+warn()    { printf "  ${YELLOW}! %s${NC}\n" "$*"; }
+die()     { printf "${RED}✗ %s${NC}\n" "$*"; exit 1; }
+
+timer() {
+    local elapsed=$(($(date +%s) - START_TIME))
+    printf "  ${CYAN}⏱  %ds${NC}\n" "$elapsed"
+}
+
+summary() {
+    echo ""
+    local total=$((PASS + FAIL))
+    timer
+    if [ "$FAIL" -eq 0 ]; then
+        printf "${GREEN}══ All %d checks passed ══${NC}\n" "$total"
+    else
+        printf "${RED}══ %d/%d checks failed ══${NC}\n" "$FAIL" "$total"
+    fi
+}
+
+# ── bailout flags ──────────────────────────────────────────────────────────
+
+if [ "${SKIP_CHECKS:-0}" = "1" ]; then
+    warn "SKIP_CHECKS=1 — bypassing all pre-commit checks"
+    exit 0
+fi
+
+# ── gate 1: cargo fmt ─────────────────────────────────────────────────────
+
+banner "cargo fmt --check"
+if cargo fmt --check 2>/dev/null; then
+    ok "formatting"
+else
+    fail "formatting"
+
+    # If we're in a terminal, offer to auto-fix
+    if [ -t 1 ]; then
+        printf "\n${YELLOW}Auto-format staged files?${NC} "
+        printf "(run ${CYAN}cargo fmt${NC}, then ${CYAN}git add -u${NC} and re-commit)\n"
+    fi
+fi
+
+# ── gate 2: cargo clippy ──────────────────────────────────────────────────
+
+banner "cargo clippy"
+if cargo clippy --all-targets --all-features -- \
+    -D warnings \
+    -W clippy::all \
+    -W clippy::pedantic \
+    -W clippy::nursery \
+    -W clippy::cargo \
+    2>&1; then
+    ok "clippy (all + pedantic + nursery + cargo)"
+else
+    fail "clippy"
+fi
+
+# ── gate 3: cargo test ────────────────────────────────────────────────────
+
+if [ "${SKIP_TESTS:-0}" = "1" ]; then
+    warn "SKIP_TESTS=1 — skipping test suite"
+elif [ "${TEST_ONLY:-0}" = "1" ]; then
+    banner "cargo test (test-only mode)"
+    if cargo test 2>&1; then
+        ok "tests"
+    else
+        fail "tests"
+    fi
+    summary
+    exit $((FAIL > 0))
+else
+    banner "cargo test"
+    if cargo test 2>&1; then
+        ok "tests"
+    else
+        fail "tests"
+    fi
+fi
+
+# ── gate 4: cargo build release (smoke check) ─────────────────────────────
+
+banner "cargo build --release"
+if cargo build --release 2>&1; then
+    ok "release build"
+else
+    fail "release build"
+fi
+
+# ── result ─────────────────────────────────────────────────────────────────
+
+summary
+
+if [ "$FAIL" -gt 0 ]; then
+    echo ""
+    printf "${RED}Commit blocked.${NC} Fix the failures above and re-commit.\n"
+    printf "  Skip all checks:  ${CYAN}SKIP_CHECKS=1 git commit ...${NC}\n"
+    printf "  Skip tests only:  ${CYAN}SKIP_TESTS=1 git commit ...${NC}\n"
+    exit 1
+fi
+
+exit 0
