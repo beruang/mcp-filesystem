@@ -5,6 +5,8 @@ edition = "2021"
 description = "MCP filesystem server with strict sandboxing and recursive root access control"
 license = "MIT"
 repository = "https://github.com/user/mcp-filesystem-rs"
+keywords = ["mcp", "filesystem", "server", "sandbox", "stdio"]
+categories = ["development-tools", "filesystem"]
 
 [[bin]]
 name = "mcp-filesystem-rs"

@@ -1,4 +1,5 @@
-/// edit_file tests are functional: they test the tool logic against real files.
+#![allow(clippy::redundant_clone)]
+/// `edit_file` tests are functional: they test the tool logic against real files.
 /// They use the sandbox for path validation and verify edit operations.
 use mcp_filesystem_rs::sandbox::{AllowedRoot, RootMode, Sandbox};
 use serde_json::json;
@@ -31,11 +32,7 @@ fn test_edit_file_single_replacement() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sandbox = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadWrite,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
         Some(dir.clone()),
     );
     let config = make_config(sandbox);
@@ -71,11 +68,7 @@ fn test_edit_file_apply_writes_file() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sandbox = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadWrite,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
         Some(dir.clone()),
     );
     let config = make_config(sandbox);
@@ -105,11 +98,7 @@ fn test_edit_file_pattern_not_found() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sandbox = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadWrite,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
         Some(dir.clone()),
     );
     let config = make_config(sandbox);
@@ -128,10 +117,7 @@ fn test_edit_file_pattern_not_found() {
 
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(matches!(
-        err,
-        mcp_filesystem_rs::error::FsError::EditPatternNotFound { .. }
-    ));
+    assert!(matches!(err, mcp_filesystem_rs::error::FsError::EditPatternNotFound { .. }));
 }
 
 #[test]
@@ -142,11 +128,7 @@ fn test_edit_file_replace_all() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sandbox = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadWrite,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
         Some(dir.clone()),
     );
     let config = make_config(sandbox);
@@ -177,11 +159,7 @@ fn test_edit_file_ambiguous_multiple_matches() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sandbox = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadWrite,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
         Some(dir.clone()),
     );
     let config = make_config(sandbox);
@@ -200,8 +178,5 @@ fn test_edit_file_ambiguous_multiple_matches() {
 
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(matches!(
-        err,
-        mcp_filesystem_rs::error::FsError::EditPatternAmbiguous { .. }
-    ));
+    assert!(matches!(err, mcp_filesystem_rs::error::FsError::EditPatternAmbiguous { .. }));
 }

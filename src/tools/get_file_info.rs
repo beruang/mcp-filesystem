@@ -20,10 +20,11 @@ pub struct FileInfoOutput {
     pub readonly: bool,
 }
 
-fn _format_time(_t: std::time::SystemTime) -> Option<String> {
+const fn _format_time(_t: std::time::SystemTime) -> Option<String> {
     None
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "get_file_info".to_string(),
@@ -42,9 +43,7 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let requested = Path::new(path_str);
 
     let resolved = sandbox.resolve_existing_read(requested)?;
@@ -60,16 +59,11 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
 
     let readonly = metadata.permissions().readonly();
 
-    // Format timestamps as ISO 8601 strings
     let format_ts = |t: std::io::Result<std::time::SystemTime>| -> Option<String> {
         t.ok().map(|time| {
-            let dur = time
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default();
+            let dur = time.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
             let secs = dur.as_secs();
-            // Simple RFC 3339 format via chrono-like approach
-            // For now, return seconds since epoch as ISO string
-
+            #[allow(clippy::cast_possible_wrap)]
             chrono_lite::from_unix(secs as i64)
         })
     };
@@ -83,19 +77,14 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
         accessed: format_ts(metadata.accessed()),
         readonly,
     })
-    .map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
 
-// Minimal timestamp formatting without chrono dependency
 mod chrono_lite {
     pub fn from_unix(secs: i64) -> String {
-        // Days in months (non-leap year)
         let days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
         let mut remaining = secs;
-        // Find year
         let mut year = 1970i64;
         loop {
             let days_in_year = if is_leap(year) { 366 } else { 365 };
@@ -107,13 +96,9 @@ mod chrono_lite {
             year += 1;
         }
 
-        // Find month
         let mut month = 0usize;
         for (i, &days) in days_in_month.iter().enumerate() {
-            let mut days_in_this_month = days as i64;
-            if i == 1 && is_leap(year) {
-                days_in_this_month = 29;
-            }
+            let days_in_this_month = if i == 1 && is_leap(year) { 29 } else { i64::from(days) };
             let secs_in_month = days_in_this_month * 86400;
             if remaining < secs_in_month {
                 month = i;
@@ -129,18 +114,10 @@ mod chrono_lite {
         let min = remaining / 60;
         let sec = remaining % 60;
 
-        format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-            year,
-            month + 1,
-            day,
-            hour,
-            min,
-            sec
-        )
+        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, month + 1, day, hour, min, sec)
     }
 
-    fn is_leap(y: i64) -> bool {
+    const fn is_leap(y: i64) -> bool {
         (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
     }
 }

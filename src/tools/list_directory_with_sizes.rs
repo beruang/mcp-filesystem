@@ -20,6 +20,7 @@ pub struct ListDirectoryWithSizesOutput {
     pub entries: Vec<DirEntryWithSize>,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "list_directory_with_sizes".to_string(),
@@ -38,17 +39,13 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let requested = Path::new(path_str);
 
     let resolved = sandbox.resolve_existing_read(requested)?;
 
     if !resolved.canonical.is_dir() {
-        return Err(FsError::NotADirectory {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::NotADirectory { path: requested.to_path_buf() });
     }
 
     let mut entries: Vec<DirEntryWithSize> = Vec::new();
@@ -71,23 +68,11 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
             "other"
         };
 
-        let size = if file_type.is_file() {
-            metadata.map(|m| m.len())
-        } else {
-            None
-        };
+        let size = if file_type.is_file() { metadata.map(|m| m.len()) } else { None };
 
-        entries.push(DirEntryWithSize {
-            name,
-            path,
-            entry_type: entry_type.to_string(),
-            size,
-        });
+        entries.push(DirEntryWithSize { name, path, entry_type: entry_type.to_string(), size });
     }
 
-    serde_json::to_value(ListDirectoryWithSizesOutput { entries }).map_err(|e| {
-        FsError::SerializationError {
-            message: e.to_string(),
-        }
-    })
+    serde_json::to_value(ListDirectoryWithSizesOutput { entries })
+        .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

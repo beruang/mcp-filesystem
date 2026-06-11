@@ -66,53 +66,53 @@ pub struct ErrorResponse {
 }
 
 impl FsError {
-    pub fn error_code(&self) -> &str {
+    #[must_use]
+    pub const fn error_code(&self) -> &str {
         match self {
-            FsError::InvalidPath { .. } => "invalid_path",
-            FsError::PathNotFound { .. } => "path_not_found",
-            FsError::OutsideAllowedRoots { .. } => "outside_allowed_roots",
-            FsError::PermissionDenied { .. } => "permission_denied",
-            FsError::ReadOnlyRoot { .. } => "read_only_root",
-            FsError::NotAFile { .. } => "not_a_file",
-            FsError::NotADirectory { .. } => "not_a_directory",
-            FsError::FileTooLarge { .. } => "file_too_large",
-            FsError::BinaryFileNotSupported { .. } => "binary_file_not_supported",
-            FsError::TooManyResults { .. } => "too_many_results",
-            FsError::AmbiguousRelativePath { .. } => "ambiguous_relative_path",
-            FsError::EditPatternNotFound { .. } => "edit_pattern_not_found",
-            FsError::EditPatternAmbiguous { .. } => "edit_pattern_ambiguous",
-            FsError::IoError { .. } => "io_error",
-            FsError::SerializationError { .. } => "serialization_error",
-            FsError::UnsupportedOperation { .. } => "unsupported_operation",
+            Self::InvalidPath { .. } => "invalid_path",
+            Self::PathNotFound { .. } => "path_not_found",
+            Self::OutsideAllowedRoots { .. } => "outside_allowed_roots",
+            Self::PermissionDenied { .. } => "permission_denied",
+            Self::ReadOnlyRoot { .. } => "read_only_root",
+            Self::NotAFile { .. } => "not_a_file",
+            Self::NotADirectory { .. } => "not_a_directory",
+            Self::FileTooLarge { .. } => "file_too_large",
+            Self::BinaryFileNotSupported { .. } => "binary_file_not_supported",
+            Self::TooManyResults { .. } => "too_many_results",
+            Self::AmbiguousRelativePath { .. } => "ambiguous_relative_path",
+            Self::EditPatternNotFound { .. } => "edit_pattern_not_found",
+            Self::EditPatternAmbiguous { .. } => "edit_pattern_ambiguous",
+            Self::IoError { .. } => "io_error",
+            Self::SerializationError { .. } => "serialization_error",
+            Self::UnsupportedOperation { .. } => "unsupported_operation",
         }
     }
 
+    #[must_use]
     pub fn to_error_response(&self) -> ErrorResponse {
         let (path, pattern, count) = match self {
-            FsError::OutsideAllowedRoots { path } => (Some(path.display().to_string()), None, None),
-            FsError::PathNotFound { path } => (Some(path.display().to_string()), None, None),
-            FsError::InvalidPath { path } => (Some(path.display().to_string()), None, None),
-            FsError::PermissionDenied { path } => (Some(path.display().to_string()), None, None),
-            FsError::ReadOnlyRoot { path } => (Some(path.display().to_string()), None, None),
-            FsError::NotAFile { path } => (Some(path.display().to_string()), None, None),
-            FsError::NotADirectory { path } => (Some(path.display().to_string()), None, None),
-            FsError::FileTooLarge { path, .. } => (Some(path.display().to_string()), None, None),
-            FsError::BinaryFileNotSupported { path } => {
+            Self::OutsideAllowedRoots { path }
+            | Self::PathNotFound { path }
+            | Self::InvalidPath { path }
+            | Self::PermissionDenied { path }
+            | Self::ReadOnlyRoot { path }
+            | Self::NotAFile { path }
+            | Self::NotADirectory { path }
+            | Self::FileTooLarge { path, .. }
+            | Self::BinaryFileNotSupported { path } => {
                 (Some(path.display().to_string()), None, None)
             }
-            FsError::TooManyResults { .. } => (None, None, None),
-            FsError::AmbiguousRelativePath { .. } => (None, None, None),
-            FsError::EditPatternNotFound { path, pattern } => (
-                Some(path.display().to_string()),
-                Some(pattern.clone()),
-                None,
-            ),
-            FsError::EditPatternAmbiguous { path, count } => {
+            Self::TooManyResults { .. }
+            | Self::AmbiguousRelativePath { .. }
+            | Self::IoError { .. }
+            | Self::SerializationError { .. }
+            | Self::UnsupportedOperation { .. } => (None, None, None),
+            Self::EditPatternNotFound { path, pattern } => {
+                (Some(path.display().to_string()), Some(pattern.clone()), None)
+            }
+            Self::EditPatternAmbiguous { path, count } => {
                 (Some(path.display().to_string()), None, Some(*count))
             }
-            FsError::IoError { .. }
-            | FsError::SerializationError { .. }
-            | FsError::UnsupportedOperation { .. } => (None, None, None),
         };
 
         ErrorResponse {
@@ -128,15 +128,9 @@ impl FsError {
 impl From<std::io::Error> for FsError {
     fn from(e: std::io::Error) -> Self {
         match e.kind() {
-            std::io::ErrorKind::NotFound => FsError::PathNotFound {
-                path: PathBuf::new(),
-            },
-            std::io::ErrorKind::PermissionDenied => FsError::PermissionDenied {
-                path: PathBuf::new(),
-            },
-            _ => FsError::IoError {
-                message: e.to_string(),
-            },
+            std::io::ErrorKind::NotFound => Self::PathNotFound { path: PathBuf::new() },
+            std::io::ErrorKind::PermissionDenied => Self::PermissionDenied { path: PathBuf::new() },
+            _ => Self::IoError { message: e.to_string() },
         }
     }
 }

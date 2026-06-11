@@ -10,6 +10,7 @@ pub struct SearchFilesOutput {
     pub matches: Vec<String>,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "search_files".to_string(),
@@ -28,44 +29,29 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let pattern = params["pattern"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let requested = Path::new(path_str);
 
     let resolved = sandbox.resolve_existing_read(requested)?;
 
     if !resolved.canonical.is_dir() {
-        return Err(FsError::NotADirectory {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::NotADirectory { path: requested.to_path_buf() });
     }
 
     let exclude_patterns: Vec<String> = params["excludePatterns"]
         .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
     let mut builder = ignore::WalkBuilder::new(&resolved.canonical);
-    builder
-        .follow_links(false)
-        .hidden(true)
-        .standard_filters(false);
+    builder.follow_links(false).hidden(true).standard_filters(false);
 
     // Build exclude glob patterns
-    let exclude_globs: Vec<glob::Pattern> = exclude_patterns
-        .iter()
-        .filter_map(|p| glob::Pattern::new(p).ok())
-        .collect();
+    let exclude_globs: Vec<glob::Pattern> =
+        exclude_patterns.iter().filter_map(|p| glob::Pattern::new(p).ok()).collect();
 
     builder.filter_entry(move |entry| {
         let path_str = entry.path().to_string_lossy();
@@ -73,9 +59,8 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     });
 
     let mut matches: Vec<String> = Vec::new();
-    let glob_pattern = glob::Pattern::new(pattern).map_err(|e| FsError::InvalidPath {
-        path: std::path::PathBuf::from(e.to_string()),
-    })?;
+    let glob_pattern = glob::Pattern::new(pattern)
+        .map_err(|e| FsError::InvalidPath { path: std::path::PathBuf::from(e.to_string()) })?;
 
     for result in builder.build() {
         if matches.len() >= config.limits.max_search_results {
@@ -85,9 +70,7 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
             });
         }
 
-        let entry = result.map_err(|e| FsError::IoError {
-            message: e.to_string(),
-        })?;
+        let entry = result.map_err(|e| FsError::IoError { message: e.to_string() })?;
 
         if entry.file_type().is_some_and(|ft| ft.is_file()) {
             let path = entry.path();
@@ -97,7 +80,6 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
         }
     }
 
-    serde_json::to_value(SearchFilesOutput { matches }).map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    serde_json::to_value(SearchFilesOutput { matches })
+        .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

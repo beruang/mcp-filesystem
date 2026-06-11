@@ -18,6 +18,7 @@ pub struct ListDirectoryOutput {
     pub entries: Vec<DirEntry>,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "list_directory".to_string(),
@@ -34,17 +35,13 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let requested = Path::new(path_str);
 
     let resolved = sandbox.resolve_existing_read(requested)?;
 
     if !resolved.canonical.is_dir() {
-        return Err(FsError::NotADirectory {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::NotADirectory { path: requested.to_path_buf() });
     }
 
     let mut entries: Vec<DirEntry> = Vec::new();
@@ -66,11 +63,7 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
             "other"
         };
 
-        entries.push(DirEntry {
-            name,
-            path,
-            entry_type: entry_type.to_string(),
-        });
+        entries.push(DirEntry { name, path, entry_type: entry_type.to_string() });
     }
 
     // Check if we hit the limit
@@ -82,7 +75,6 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
         })?;
     }
 
-    serde_json::to_value(ListDirectoryOutput { entries }).map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    serde_json::to_value(ListDirectoryOutput { entries })
+        .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

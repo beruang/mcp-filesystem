@@ -1,13 +1,11 @@
+#![allow(clippy::missing_errors_doc)]
 use std::path::{Path, PathBuf};
 
 /// Walk up from `path` until finding an existing ancestor.
 /// Returns Err if `/` is reached without finding anything.
 pub fn nearest_existing_parent(path: &Path) -> Result<PathBuf, std::io::Error> {
-    let mut current = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()?.join(path)
-    };
+    let mut current =
+        if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir()?.join(path) };
 
     loop {
         if current.exists() {
@@ -23,6 +21,7 @@ pub fn nearest_existing_parent(path: &Path) -> Result<PathBuf, std::io::Error> {
 }
 
 /// Normalize path components: resolve `..` and `.` lexically without touching the filesystem.
+#[must_use]
 pub fn normalize_path(path: &Path) -> PathBuf {
     let mut components = Vec::new();
 
@@ -44,9 +43,9 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 }
 
 /// Check for `..` traversal in a path's normalized form.
+#[must_use]
 pub fn contains_traversal(path: &Path) -> bool {
-    path.components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
+    path.components().any(|c| matches!(c, std::path::Component::ParentDir))
 }
 
 /// Resolve an absolute path from a potentially relative one.
@@ -59,6 +58,7 @@ pub fn resolve_absolute(
         return Ok(requested.to_path_buf());
     }
 
+    #[allow(clippy::option_if_let_else)]
     match workspace_root {
         Some(root) => Ok(root.join(requested)),
         None => Err(crate::error::FsError::AmbiguousRelativePath {
@@ -68,6 +68,7 @@ pub fn resolve_absolute(
 }
 
 /// Check if a path is likely a text file (by extension).
+#[must_use]
 pub fn is_likely_text_file(path: &Path) -> bool {
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         let ext = ext.to_lowercase();
@@ -129,14 +130,8 @@ pub fn is_likely_text_file(path: &Path) -> bool {
 
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
         let name_lower = name.to_lowercase();
-        let text_names = [
-            "makefile",
-            "dockerfile",
-            "license",
-            "readme",
-            "changelog",
-            "contributing",
-        ];
+        let text_names =
+            ["makefile", "dockerfile", "license", "readme", "changelog", "contributing"];
         if text_names.contains(&name_lower.as_str()) || name.starts_with('.') {
             return true;
         }

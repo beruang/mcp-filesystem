@@ -14,7 +14,7 @@ pub struct Cli {
     #[arg(long = "config", value_name = "PATH")]
     pub config: Option<PathBuf>,
 
-    /// Maximum bytes for read operations (default 10 MiB)
+    /// Maximum bytes for read operations (default 10 `MiB`)
     #[arg(long = "max-read-bytes")]
     pub max_read_bytes: Option<u64>,
 
@@ -92,7 +92,7 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits {
+        Self {
             max_read_bytes: 10 * 1024 * 1024, // 10 MiB
             max_edit_bytes: 10 * 1024 * 1024, // 10 MiB
             max_search_results: 1000,
@@ -111,7 +111,7 @@ pub struct Behavior {
 
 impl Default for Behavior {
     fn default() -> Self {
-        Behavior {
+        Self {
             allow_relative_paths: true,
             follow_symlinked_directories: false,
             dry_run_edits_by_default: true,
@@ -131,10 +131,7 @@ fn parse_root_arg(arg: &str) -> Result<AllowedRoot, String> {
         if let Some(mode) = RootMode::parse(m) {
             (p, mode)
         } else {
-            return Err(format!(
-                "invalid mode '{}': expected ro, rw, readonly, or readwrite",
-                m
-            ));
+            return Err(format!("invalid mode '{m}': expected ro, rw, readonly, or readwrite"));
         }
     } else {
         (arg, RootMode::ReadWrite)
@@ -143,19 +140,22 @@ fn parse_root_arg(arg: &str) -> Result<AllowedRoot, String> {
     let path = PathBuf::from(path_str);
 
     let canonical = std::fs::canonicalize(&path)
-        .map_err(|e| format!("cannot resolve root '{}': {e}", path_str))?;
+        .map_err(|e| format!("cannot resolve root '{path_str}': {e}"))?;
 
     if !canonical.is_dir() {
-        return Err(format!("root '{}' is not a directory", path_str));
+        return Err(format!("root '{path_str}' is not a directory"));
     }
 
-    Ok(AllowedRoot {
-        original: path,
-        canonical,
-        mode: mode_str,
-    })
+    Ok(AllowedRoot { original: path, canonical, mode: mode_str })
 }
 
+/// Load configuration from CLI args and optional config file.
+///
+/// # Errors
+///
+/// Returns `Err` if no roots are configured, if a root path cannot be resolved,
+/// or if the config file is invalid.
+#[allow(clippy::needless_pass_by_value)]
 pub fn load_config(cli: Cli) -> Result<AppConfig, String> {
     let mut allowed_roots: Vec<AllowedRoot> = Vec::new();
     let mut limits = Limits::default();
@@ -178,11 +178,7 @@ pub fn load_config(cli: Cli) -> Result<AppConfig, String> {
                 if !canonical.is_dir() {
                     return Err(format!("root '{}' is not a directory", r.path));
                 }
-                allowed_roots.push(AllowedRoot {
-                    original: path,
-                    canonical,
-                    mode,
-                });
+                allowed_roots.push(AllowedRoot { original: path, canonical, mode });
             }
         }
 
@@ -264,9 +260,5 @@ pub fn load_config(cli: Cli) -> Result<AppConfig, String> {
 
     let sandbox = Sandbox::new(allowed_roots, workspace_root);
 
-    Ok(AppConfig {
-        sandbox,
-        limits,
-        behavior,
-    })
+    Ok(AppConfig { sandbox, limits, behavior })
 }

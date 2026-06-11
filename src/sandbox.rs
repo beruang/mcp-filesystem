@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_lines, clippy::missing_errors_doc, clippy::missing_panics_doc)]
 use crate::error::FsError;
 use crate::path::normalize_path;
 use std::path::{Path, PathBuf};
@@ -9,10 +10,11 @@ pub enum RootMode {
 }
 
 impl RootMode {
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "ro" | "readonly" | "read_only" | "read-only" => Some(RootMode::ReadOnly),
-            "rw" | "readwrite" | "read_write" | "read-write" => Some(RootMode::ReadWrite),
+            "ro" | "readonly" | "read_only" | "read-only" => Some(Self::ReadOnly),
+            "rw" | "readwrite" | "read_write" | "read-write" => Some(Self::ReadWrite),
             _ => None,
         }
     }
@@ -32,15 +34,16 @@ pub struct AllowedRoot {
 }
 
 impl AllowedRoot {
+    #[must_use]
     pub fn depth(&self) -> usize {
         self.canonical.components().count()
     }
 
     pub fn ensure_access(&self, required: AccessKind) -> Result<(), FsError> {
         match (self.mode, required) {
-            (RootMode::ReadOnly, AccessKind::Write) => Err(FsError::ReadOnlyRoot {
-                path: self.original.clone(),
-            }),
+            (RootMode::ReadOnly, AccessKind::Write) => {
+                Err(FsError::ReadOnlyRoot { path: self.original.clone() })
+            }
             _ => Ok(()),
         }
     }
@@ -70,26 +73,24 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
-    pub fn new(roots: Vec<AllowedRoot>, workspace_root: Option<PathBuf>) -> Self {
-        Sandbox {
-            roots,
-            workspace_root,
-        }
+    #[must_use]
+    pub const fn new(roots: Vec<AllowedRoot>, workspace_root: Option<PathBuf>) -> Self {
+        Self { roots, workspace_root }
     }
 
-    pub fn has_single_root(&self) -> bool {
+    #[must_use]
+    pub const fn has_single_root(&self) -> bool {
         self.roots.len() == 1
     }
 
+    #[must_use]
     pub fn workspace_root(&self) -> Option<&Path> {
         self.workspace_root.as_deref()
     }
 
+    #[must_use]
     pub fn list_allowed_directories(&self) -> Vec<String> {
-        self.roots
-            .iter()
-            .map(|r| r.original.display().to_string())
-            .collect()
+        self.roots.iter().map(|r| r.original.display().to_string()).collect()
     }
 
     pub fn resolve_existing_read(&self, requested: &Path) -> Result<ResolvedPath, FsError> {
@@ -98,19 +99,13 @@ impl Sandbox {
             message: format!("cannot resolve path '{}': {e}", absolute.display()),
         })?;
 
-        let root = self.find_best_matching_root(&canonical).ok_or_else(|| {
-            FsError::OutsideAllowedRoots {
-                path: requested.to_path_buf(),
-            }
-        })?;
+        let root = self
+            .find_best_matching_root(&canonical)
+            .ok_or_else(|| FsError::OutsideAllowedRoots { path: requested.to_path_buf() })?;
 
         root.ensure_access(AccessKind::Read)?;
 
-        Ok(ResolvedPath {
-            requested: requested.to_path_buf(),
-            canonical,
-            root,
-        })
+        Ok(ResolvedPath { requested: requested.to_path_buf(), canonical, root })
     }
 
     pub fn resolve_existing_write(&self, requested: &Path) -> Result<ResolvedPath, FsError> {
@@ -119,58 +114,43 @@ impl Sandbox {
             message: format!("cannot resolve path '{}': {e}", absolute.display()),
         })?;
 
-        let root = self.find_best_matching_root(&canonical).ok_or_else(|| {
-            FsError::OutsideAllowedRoots {
-                path: requested.to_path_buf(),
-            }
-        })?;
+        let root = self
+            .find_best_matching_root(&canonical)
+            .ok_or_else(|| FsError::OutsideAllowedRoots { path: requested.to_path_buf() })?;
 
         root.ensure_access(AccessKind::Write)?;
 
-        Ok(ResolvedPath {
-            requested: requested.to_path_buf(),
-            canonical,
-            root,
-        })
+        Ok(ResolvedPath { requested: requested.to_path_buf(), canonical, root })
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn resolve_create_write(&self, requested: &Path) -> Result<ResolvedCreatePath, FsError> {
         let absolute = crate::path::resolve_absolute(requested, self.workspace_root())?;
 
         if absolute.as_os_str().is_empty() {
-            return Err(FsError::InvalidPath {
-                path: requested.to_path_buf(),
-            });
+            return Err(FsError::InvalidPath { path: requested.to_path_buf() });
         }
 
         // Get the parent directory
-        let parent = absolute.parent().ok_or_else(|| FsError::InvalidPath {
-            path: requested.to_path_buf(),
-        })?;
+        let parent = absolute
+            .parent()
+            .ok_or_else(|| FsError::InvalidPath { path: requested.to_path_buf() })?;
 
         // Find nearest existing parent
         let existing_parent =
             crate::path::nearest_existing_parent(parent).map_err(|e| FsError::IoError {
-                message: format!(
-                    "cannot find existing parent for '{}': {e}",
-                    requested.display()
-                ),
+                message: format!("cannot find existing parent for '{}': {e}", requested.display()),
             })?;
 
         // Canonicalize the existing parent (resolves symlinks)
         let canonical_parent =
             std::fs::canonicalize(&existing_parent).map_err(|e| FsError::IoError {
-                message: format!(
-                    "cannot resolve parent path '{}': {e}",
-                    existing_parent.display()
-                ),
+                message: format!("cannot resolve parent path '{}': {e}", existing_parent.display()),
             })?;
 
         let root = self
             .find_best_matching_root(&canonical_parent)
-            .ok_or_else(|| FsError::OutsideAllowedRoots {
-                path: requested.to_path_buf(),
-            })?;
+            .ok_or_else(|| FsError::OutsideAllowedRoots { path: requested.to_path_buf() })?;
 
         root.ensure_access(AccessKind::Write)?;
 
@@ -182,9 +162,7 @@ impl Sandbox {
         // If normalized path is shorter than the existing parent, the path
         // traversed above the parent (via ..), which means escape attempt.
         if norm_components.len() < existing_count {
-            return Err(FsError::OutsideAllowedRoots {
-                path: requested.to_path_buf(),
-            });
+            return Err(FsError::OutsideAllowedRoots { path: requested.to_path_buf() });
         }
 
         // The canonical parent may differ from the existing parent (symlinks).
@@ -195,9 +173,7 @@ impl Sandbox {
         for component in &tail {
             match component {
                 std::path::Component::ParentDir => {
-                    return Err(FsError::OutsideAllowedRoots {
-                        path: requested.to_path_buf(),
-                    });
+                    return Err(FsError::OutsideAllowedRoots { path: requested.to_path_buf() });
                 }
                 std::path::Component::Normal(os_str) => {
                     destination.push(os_str);
@@ -222,9 +198,7 @@ impl Sandbox {
     ) -> Result<AllowedRoot, FsError> {
         let root = self
             .find_best_matching_root(canonical_path)
-            .ok_or_else(|| FsError::OutsideAllowedRoots {
-                path: canonical_path.to_path_buf(),
-            })?;
+            .ok_or_else(|| FsError::OutsideAllowedRoots { path: canonical_path.to_path_buf() })?;
         root.ensure_access(access)?;
         Ok(root)
     }
@@ -241,6 +215,6 @@ impl Sandbox {
         // Sort by depth descending — most specific first
         matching.sort_by_key(|b| std::cmp::Reverse(b.depth()));
 
-        matching.first().cloned().cloned()
+        matching.first().copied().cloned()
     }
 }

@@ -1,6 +1,7 @@
 use crate::config::AppConfig;
 use crate::error::FsError;
 use crate::sandbox::Sandbox;
+use base64::Engine;
 use serde::Serialize;
 use serde_json::Value;
 use std::path::Path;
@@ -12,6 +13,7 @@ pub struct ReadMediaFileOutput {
     pub data: String,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "read_media_file".to_string(),
@@ -28,17 +30,13 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let requested = Path::new(path_str);
 
     let resolved = sandbox.resolve_existing_read(requested)?;
 
     if !resolved.canonical.is_file() {
-        return Err(FsError::NotAFile {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::NotAFile { path: requested.to_path_buf() });
     }
 
     let metadata = std::fs::metadata(&resolved.canonical)?;
@@ -53,16 +51,10 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
 
     let bytes = std::fs::read(&resolved.canonical)?;
 
-    let mime_type = mime_guess::from_path(&resolved.canonical)
-        .first_or_octet_stream()
-        .to_string();
+    let mime_type = mime_guess::from_path(&resolved.canonical).first_or_octet_stream().to_string();
 
-    use base64::Engine;
     let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
 
-    serde_json::to_value(ReadMediaFileOutput { mime_type, data }).map_err(|e| {
-        FsError::SerializationError {
-            message: e.to_string(),
-        }
-    })
+    serde_json::to_value(ReadMediaFileOutput { mime_type, data })
+        .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

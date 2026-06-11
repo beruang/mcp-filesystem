@@ -9,10 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(format!("mcp_filesystem_rs={}", cli.log_level)));
-    tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .with_writer(std::io::stderr)
-        .init();
+    tracing_subscriber::fmt().with_env_filter(env_filter).with_writer(std::io::stderr).init();
 
     let app_config = match config::load_config(cli) {
         Ok(c) => c,

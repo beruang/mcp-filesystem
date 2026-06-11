@@ -1,0 +1,38 @@
+# Production-level clippy configuration for mcp-filesystem-rs
+#
+# Deny-by-default lints for safety, correctness, and performance.
+# All lints are set to deny — the build fails on any violation.
+
+# Cognitive complexity: flag functions that are too complex
+cognitive-complexity-threshold = 25
+
+# Maximum size for a function's argument list before warning
+too-many-arguments-threshold = 8
+
+# Deprecated: cognitive-complexity-threshold above covers this
+
+# Disallowed types
+disallowed-types = [
+    # Prefer std::sync over std::rc in async code
+    "std::rc::Rc",
+    "std::cell::RefCell",
+    "std::collections::LinkedList",
+]
+
+# Allowed doc-markdown identifiers
+doc-valid-idents = [
+    "MCP",
+    "JSON",
+    "Rust",
+    "APIs",
+    "CLI",
+    "MIME",
+    "NDJSON",
+    "TOML",
+    "TOCTOU",
+    "Filesystem",
+    "Stdio",
+    "CRLF",
+    "GitHub",
+    "README",
+]

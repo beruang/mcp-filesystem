@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_clone)]
 use mcp_filesystem_rs::sandbox::{AllowedRoot, RootMode, Sandbox};
 use std::fs;
 use std::path::PathBuf;
@@ -43,11 +44,7 @@ fn test_broad_readonly_narrow_readwrite_allows_write_in_narrow() {
 
     // Write in narrow should be allowed (most specific = readWrite)
     let result = sb.resolve_existing_write(&narrow_file);
-    assert!(
-        result.is_ok(),
-        "write in narrow readWrite root should be allowed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "write in narrow readWrite root should be allowed: {:?}", result.err());
 }
 
 #[test]
@@ -81,10 +78,7 @@ fn test_broad_readonly_narrow_readwrite_rejects_write_in_broad() {
 
     // Write in broad (outside narrow) should be rejected (most specific = readOnly)
     let result = sb.resolve_existing_write(&broad_file);
-    assert!(
-        result.is_err(),
-        "write in broad readOnly root (outside narrow) should be rejected"
-    );
+    assert!(result.is_err(), "write in broad readOnly root (outside narrow) should be rejected");
 }
 
 #[test]

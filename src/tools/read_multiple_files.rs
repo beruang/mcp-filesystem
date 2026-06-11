@@ -24,6 +24,7 @@ pub struct ReadMultipleFilesOutput {
     pub errors: Vec<FileReadError>,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "read_multiple_files".to_string(),
@@ -40,11 +41,7 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let paths: Vec<String> = params["paths"]
         .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
     let mut files = Vec::new();
@@ -53,31 +50,20 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     for p in &paths {
         let requested = Path::new(p);
         match read_single(sandbox, config, requested) {
-            Ok(content) => files.push(FileReadResult {
-                path: p.clone(),
-                content,
-            }),
-            Err(e) => errors.push(FileReadError {
-                path: p.clone(),
-                error: e.to_error_response(),
-            }),
+            Ok(content) => files.push(FileReadResult { path: p.clone(), content }),
+            Err(e) => errors.push(FileReadError { path: p.clone(), error: e.to_error_response() }),
         }
     }
 
-    serde_json::to_value(ReadMultipleFilesOutput { files, errors }).map_err(|e| {
-        FsError::SerializationError {
-            message: e.to_string(),
-        }
-    })
+    serde_json::to_value(ReadMultipleFilesOutput { files, errors })
+        .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
 
 fn read_single(sandbox: &Sandbox, config: &AppConfig, requested: &Path) -> Result<String, FsError> {
     let resolved = sandbox.resolve_existing_read(requested)?;
 
     if !resolved.canonical.is_file() {
-        return Err(FsError::NotAFile {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::NotAFile { path: requested.to_path_buf() });
     }
 
     let metadata = std::fs::metadata(&resolved.canonical)?;
@@ -91,9 +77,7 @@ fn read_single(sandbox: &Sandbox, config: &AppConfig, requested: &Path) -> Resul
     }
 
     if !path::is_likely_text_file(&resolved.canonical) {
-        return Err(FsError::BinaryFileNotSupported {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::BinaryFileNotSupported { path: requested.to_path_buf() });
     }
 
     Ok(std::fs::read_to_string(&resolved.canonical)?)

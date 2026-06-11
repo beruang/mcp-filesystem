@@ -19,11 +19,7 @@ fn temp_dir() -> PathBuf {
 fn setup(dir: &std::path::Path) -> (Sandbox, AppConfig) {
     let canonical = fs::canonicalize(dir).unwrap();
     let sandbox = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.to_path_buf(),
-            canonical,
-            mode: RootMode::ReadWrite,
-        }],
+        vec![AllowedRoot { original: dir.to_path_buf(), canonical, mode: RootMode::ReadWrite }],
         Some(dir.to_path_buf()),
     );
     let config = AppConfig {
@@ -77,8 +73,8 @@ fn test_read_text_file_with_head() {
     );
     assert!(result.is_ok());
     let output = result.unwrap();
-    let lines: Vec<&str> = output["content"].as_str().unwrap().lines().collect();
-    assert_eq!(lines.len(), 2);
+    let line_count = output["content"].as_str().unwrap().lines().count();
+    assert_eq!(line_count, 2);
 }
 
 #[test]

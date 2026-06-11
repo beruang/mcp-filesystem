@@ -16,11 +16,7 @@ fn temp_dir() -> PathBuf {
 fn sandbox_from_root(root: &std::path::Path, mode: RootMode) -> Sandbox {
     let canonical = fs::canonicalize(root).unwrap();
     Sandbox::new(
-        vec![AllowedRoot {
-            original: root.to_path_buf(),
-            canonical: canonical.clone(),
-            mode,
-        }],
+        vec![AllowedRoot { original: root.to_path_buf(), canonical: canonical.clone(), mode }],
         Some(canonical),
     )
 }
@@ -33,11 +29,7 @@ fn test_resolve_existing_read_allows_child() {
 
     let sb = sandbox_from_root(&dir, RootMode::ReadWrite);
     let result = sb.resolve_existing_read(&file);
-    assert!(
-        result.is_ok(),
-        "child file should be readable: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "child file should be readable: {:?}", result.err());
 }
 
 #[test]
@@ -58,7 +50,7 @@ fn test_resolve_rejects_sibling_prefix() {
     let dir = temp_dir();
     // Create a sibling directory whose name starts with the root name
     let root_name = dir.file_name().unwrap().to_string_lossy().to_string();
-    let sibling = dir.parent().unwrap().join(format!("{}Evil", root_name));
+    let sibling = dir.parent().unwrap().join(format!("{root_name}Evil"));
     fs::create_dir_all(&sibling).unwrap();
     let file = sibling.join("file.txt");
     fs::write(&file, "evil").unwrap();
@@ -78,11 +70,7 @@ fn test_resolve_allows_deep_descendant() {
 
     let sb = sandbox_from_root(&dir, RootMode::ReadWrite);
     let result = sb.resolve_existing_read(&file);
-    assert!(
-        result.is_ok(),
-        "deep descendant should be allowed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "deep descendant should be allowed: {:?}", result.err());
 }
 
 #[test]

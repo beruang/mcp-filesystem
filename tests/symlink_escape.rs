@@ -17,11 +17,7 @@ fn temp_dir() -> PathBuf {
 fn sandbox_from_root(root: &std::path::Path, mode: RootMode) -> Sandbox {
     let canonical = fs::canonicalize(root).unwrap();
     Sandbox::new(
-        vec![AllowedRoot {
-            original: root.to_path_buf(),
-            canonical: canonical.clone(),
-            mode,
-        }],
+        vec![AllowedRoot { original: root.to_path_buf(), canonical: canonical.clone(), mode }],
         Some(canonical),
     )
 }
@@ -43,10 +39,7 @@ fn test_symlink_outside_rejected_read() {
 
     // The canonical path of the link will be the outside file
     // which is NOT under the root, so it should be rejected
-    assert!(
-        result.is_err(),
-        "symlink pointing outside root should be rejected"
-    );
+    assert!(result.is_err(), "symlink pointing outside root should be rejected");
 }
 
 #[test]
@@ -61,10 +54,7 @@ fn test_symlink_outside_rejected_write() {
     let sb = sandbox_from_root(&dir, RootMode::ReadWrite);
     let result = sb.resolve_existing_write(&link);
 
-    assert!(
-        result.is_err(),
-        "write via symlink pointing outside should be rejected"
-    );
+    assert!(result.is_err(), "write via symlink pointing outside should be rejected");
 }
 
 #[test]
@@ -83,11 +73,7 @@ fn test_symlink_inside_allowed() {
     let result = sb.resolve_existing_read(&link_file);
 
     // Canonical path resolves to dir/real/file.txt which is inside root
-    assert!(
-        result.is_ok(),
-        "symlink pointing inside root should be allowed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "symlink pointing inside root should be allowed: {:?}", result.err());
 }
 
 #[test]
@@ -103,11 +89,7 @@ fn test_symlink_to_nonexistent_inside_allowed_for_create() {
     let sb = sandbox_from_root(&dir, RootMode::ReadWrite);
     let result = sb.resolve_create_write(&new_file);
 
-    assert!(
-        result.is_ok(),
-        "create via internal symlink should be allowed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "create via internal symlink should be allowed: {:?}", result.err());
 }
 
 #[test]
@@ -130,8 +112,5 @@ fn test_symlink_chain_outside_rejected() {
 
     // The first link points to second_link which doesn't exist within the root,
     // so canonicalize will fail or resolve to outside
-    assert!(
-        result.is_err(),
-        "symlink chain pointing outside should be rejected"
-    );
+    assert!(result.is_err(), "symlink chain pointing outside should be rejected");
 }

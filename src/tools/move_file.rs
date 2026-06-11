@@ -12,6 +12,7 @@ pub struct MoveFileOutput {
     pub moved: bool,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "move_file".to_string(),
@@ -29,14 +30,10 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let src_str = params["source"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let dst_str = params["destination"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
 
     let source = Path::new(src_str);
     let destination = Path::new(dst_str);
@@ -52,9 +49,7 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
     let dst_normalized = crate::path::normalize_path(&dst_absolute);
 
     if crate::path::contains_traversal(&dst_absolute) {
-        return Err(FsError::OutsideAllowedRoots {
-            path: destination.to_path_buf(),
-        });
+        return Err(FsError::OutsideAllowedRoots { path: destination.to_path_buf() });
     }
 
     std::fs::rename(&src_resolved.canonical, &dst_normalized)?;
@@ -64,7 +59,5 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
         destination: dst_normalized.display().to_string(),
         moved: true,
     })
-    .map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

@@ -11,6 +11,7 @@ pub struct CreateDirectoryOutput {
     pub created: bool,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "create_directory".to_string(),
@@ -27,9 +28,7 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let requested = Path::new(path_str);
 
     let _resolved = sandbox.resolve_create_write(requested)?;
@@ -38,9 +37,7 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
     let normalized = crate::path::normalize_path(&absolute);
 
     if crate::path::contains_traversal(&absolute) {
-        return Err(FsError::OutsideAllowedRoots {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::OutsideAllowedRoots { path: requested.to_path_buf() });
     }
 
     std::fs::create_dir_all(&normalized)?;
@@ -49,7 +46,5 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
         path: normalized.display().to_string(),
         created: true,
     })
-    .map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

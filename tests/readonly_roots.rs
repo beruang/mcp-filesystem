@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_clone)]
 use mcp_filesystem_rs::sandbox::{AllowedRoot, RootMode, Sandbox};
 use std::fs;
 use std::path::PathBuf;
@@ -20,20 +21,12 @@ fn test_read_allowed_on_readonly_root() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sb = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadOnly,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadOnly }],
         Some(dir.clone()),
     );
 
     let result = sb.resolve_existing_read(&file);
-    assert!(
-        result.is_ok(),
-        "read on readOnly root should be allowed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "read on readOnly root should be allowed: {:?}", result.err());
 }
 
 #[test]
@@ -44,11 +37,7 @@ fn test_write_rejected_on_readonly_root() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sb = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadOnly,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadOnly }],
         Some(dir.clone()),
     );
 
@@ -56,11 +45,7 @@ fn test_write_rejected_on_readonly_root() {
     assert!(result.is_err(), "write on readOnly root should be rejected");
 
     if let Err(e) = result {
-        assert_eq!(
-            e.error_code(),
-            "read_only_root",
-            "should return read_only_root error"
-        );
+        assert_eq!(e.error_code(), "read_only_root", "should return read_only_root error");
     }
 }
 
@@ -71,17 +56,10 @@ fn test_create_write_rejected_on_readonly_root() {
 
     let canonical = fs::canonicalize(&dir).unwrap();
     let sb = Sandbox::new(
-        vec![AllowedRoot {
-            original: dir.clone(),
-            canonical,
-            mode: RootMode::ReadOnly,
-        }],
+        vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadOnly }],
         Some(dir.clone()),
     );
 
     let result = sb.resolve_create_write(&new_file);
-    assert!(
-        result.is_err(),
-        "create on readOnly root should be rejected"
-    );
+    assert!(result.is_err(), "create on readOnly root should be rejected");
 }

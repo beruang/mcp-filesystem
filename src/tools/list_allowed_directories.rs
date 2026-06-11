@@ -9,6 +9,7 @@ pub struct ListAllowedDirectoriesOutput {
     pub directories: Vec<String>,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "list_allowed_directories".to_string(),
@@ -23,7 +24,5 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, _config: &AppConfig, _params: Value) -> Result<Value, FsError> {
     let dirs = sandbox.list_allowed_directories();
     let output = ListAllowedDirectoriesOutput { directories: dirs };
-    serde_json::to_value(output).map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    serde_json::to_value(output).map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

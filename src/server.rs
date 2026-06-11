@@ -55,15 +55,12 @@ pub struct ToolDef {
     pub input_schema: Value,
 }
 
+#[must_use]
 pub fn make_response(id: Option<Value>, result: Value) -> JsonRpcResponse {
-    JsonRpcResponse {
-        jsonrpc: "2.0".to_string(),
-        id,
-        result: Some(result),
-        error: None,
-    }
+    JsonRpcResponse { jsonrpc: "2.0".to_string(), id, result: Some(result), error: None }
 }
 
+#[must_use]
 pub fn make_error(
     id: Option<Value>,
     code: i32,
@@ -74,14 +71,12 @@ pub fn make_error(
         jsonrpc: "2.0".to_string(),
         id,
         result: None,
-        error: Some(JsonRpcError {
-            code,
-            message,
-            data,
-        }),
+        error: Some(JsonRpcError { code, message, data }),
     }
 }
 
+#[must_use]
+#[allow(clippy::needless_pass_by_value)]
 pub fn json_schema_object(properties: Value, required: Vec<&str>) -> Value {
     serde_json::json!({
         "type": "object",
@@ -95,6 +90,7 @@ fn build_tool_defs() -> Vec<ToolDef> {
 }
 
 /// Run the MCP stdio server.
+#[allow(clippy::too_many_lines, clippy::missing_errors_doc, clippy::missing_panics_doc)]
 pub async fn run_stdio(app: Arc<AppConfig>) -> Result<(), Box<dyn std::error::Error>> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -155,21 +151,10 @@ pub async fn run_stdio(app: Arc<AppConfig>) -> Result<(), Box<dyn std::error::Er
             }
 
             "tools/call" => {
-                let tool_name = request
-                    .params
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let tool_args = request
-                    .params
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or(Value::Null);
+                let tool_name = request.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let tool_args = request.params.get("arguments").cloned().unwrap_or(Value::Null);
 
-                let handler = tools
-                    .iter()
-                    .find(|(d, _)| d.name == tool_name)
-                    .map(|(_, h)| *h);
+                let handler = tools.iter().find(|(d, _)| d.name == tool_name).map(|(_, h)| *h);
 
                 match handler {
                     Some(h) => {
@@ -222,12 +207,9 @@ pub async fn run_stdio(app: Arc<AppConfig>) -> Result<(), Box<dyn std::error::Er
                             ),
                         }
                     }
-                    None => make_error(
-                        request.id,
-                        -32602,
-                        format!("Unknown tool: {tool_name}"),
-                        None,
-                    ),
+                    None => {
+                        make_error(request.id, -32602, format!("Unknown tool: {tool_name}"), None)
+                    }
                 }
             }
 

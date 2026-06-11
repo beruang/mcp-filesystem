@@ -11,7 +11,7 @@ pub struct TreeNode {
     #[serde(rename = "type")]
     pub node_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub children: Option<Vec<TreeNode>>,
+    pub children: Option<Vec<Self>>,
 }
 
 #[derive(Serialize)]
@@ -22,6 +22,7 @@ pub struct DirectoryTreeOutput {
     pub children: Vec<TreeNode>,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "directory_tree".to_string(),
@@ -39,27 +40,24 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let requested = Path::new(path_str);
 
     let resolved = sandbox.resolve_existing_read(requested)?;
 
     if !resolved.canonical.is_dir() {
-        return Err(FsError::NotADirectory {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::NotADirectory { path: requested.to_path_buf() });
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     let max_depth = params["maxDepth"]
         .as_u64()
-        .map(|n| n as usize)
-        .unwrap_or(config.limits.max_tree_depth)
+        .map_or(config.limits.max_tree_depth, |n| n as usize)
         .min(config.limits.max_tree_depth);
 
     let mut entry_count = 0usize;
 
+    #[allow(clippy::items_after_statements, clippy::option_if_let_else)]
     fn build_tree(
         path: &Path,
         depth: usize,
@@ -86,13 +84,7 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
             *entry_count += 1;
 
             let (node_type, child_nodes) = if file_type.is_dir() && !file_type.is_symlink() {
-                match build_tree(
-                    &entry.path(),
-                    depth + 1,
-                    max_depth,
-                    max_entries,
-                    entry_count,
-                ) {
+                match build_tree(&entry.path(), depth + 1, max_depth, max_entries, entry_count) {
                     Ok(c) => ("directory".to_string(), Some(c)),
                     Err(_) => ("directory".to_string(), Some(Vec::new())),
                 }
@@ -106,11 +98,7 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
                 ("other".to_string(), None)
             };
 
-            children.push(TreeNode {
-                name,
-                node_type,
-                children: child_nodes,
-            });
+            children.push(TreeNode { name, node_type, children: child_nodes });
         }
 
         Ok(children)
@@ -119,8 +107,7 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     let root_name = resolved
         .canonical
         .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".".to_string());
+        .map_or_else(|| ".".to_string(), |n| n.to_string_lossy().to_string());
 
     let children = build_tree(
         &resolved.canonical,
@@ -135,7 +122,5 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
         node_type: "directory".to_string(),
         children,
     })
-    .map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }

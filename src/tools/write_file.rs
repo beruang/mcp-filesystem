@@ -12,6 +12,7 @@ pub struct WriteFileOutput {
     pub bytes_written: u64,
 }
 
+#[must_use]
 pub fn definition() -> crate::server::ToolDef {
     crate::server::ToolDef {
         name: "write_file".to_string(),
@@ -30,14 +31,10 @@ pub fn definition() -> crate::server::ToolDef {
 pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<Value, FsError> {
     let path_str = params["path"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let content = params["content"]
         .as_str()
-        .ok_or_else(|| FsError::InvalidPath {
-            path: std::path::PathBuf::from(""),
-        })?;
+        .ok_or_else(|| FsError::InvalidPath { path: std::path::PathBuf::from("") })?;
     let create_parents = params["createParents"].as_bool().unwrap_or(false);
 
     let requested = Path::new(path_str);
@@ -52,9 +49,7 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
     // Ensure the destination itself doesn't have .. traversal
     let normalized = crate::path::normalize_path(&absolute);
     if crate::path::contains_traversal(&absolute) {
-        return Err(FsError::OutsideAllowedRoots {
-            path: requested.to_path_buf(),
-        });
+        return Err(FsError::OutsideAllowedRoots { path: requested.to_path_buf() });
     }
 
     // Verify destination is within the canonical parent's allowed root
@@ -69,20 +64,13 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
         }
     } else if let Some(parent) = normalized.parent() {
         if !parent.exists() {
-            return Err(FsError::PathNotFound {
-                path: parent.to_path_buf(),
-            });
+            return Err(FsError::PathNotFound { path: parent.to_path_buf() });
         }
     }
 
     std::fs::write(&normalized, content)?;
 
     let bytes_written = content.len() as u64;
-    serde_json::to_value(WriteFileOutput {
-        path: normalized.display().to_string(),
-        bytes_written,
-    })
-    .map_err(|e| FsError::SerializationError {
-        message: e.to_string(),
-    })
+    serde_json::to_value(WriteFileOutput { path: normalized.display().to_string(), bytes_written })
+        .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
