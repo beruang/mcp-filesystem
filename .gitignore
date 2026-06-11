@@ -111,3 +111,7 @@ Dockerfile.*.built
 bazel-*
 buck-out/
 build/
+
+# ── Project planning artifacts ──────────────────────────────────────────
+.agent/
+docs/

@@ -1,6 +1,6 @@
 <div align="center">
 
-# mcp-filesystem-rs
+# MCP File System
 
 **Secure MCP filesystem server with sandboxed access control**
 

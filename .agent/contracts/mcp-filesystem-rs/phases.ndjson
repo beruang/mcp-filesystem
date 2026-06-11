@@ -1,5 +1,0 @@
-{"type":"phase","id":"phase-1","name":"Read-only MVP","depends_on":[],"risk":"high","value":"Working MCP server binary proving sandbox, transport, and read tool contracts","spec":"docs/mcp-filesystem-rs/spec/spec-phase-1.md"}
-{"type":"phase","id":"phase-2","name":"Recursive traversal","depends_on":["phase-1"],"risk":"medium","value":"Directory tree, file search, batch reads, and media file support for AI coding agent workflows","spec":"docs/mcp-filesystem-rs/spec/spec-phase-2.md"}
-{"type":"phase","id":"phase-3","name":"Writes","depends_on":["phase-2"],"risk":"high","value":"File creation, directory creation, and move/rename with overlapping root resolution","spec":"docs/mcp-filesystem-rs/spec/spec-phase-3.md"}
-{"type":"phase","id":"phase-4","name":"Edits","depends_on":["phase-3"],"risk":"medium","value":"Pattern-based text editing with dry-run preview and unified diff output","spec":"docs/mcp-filesystem-rs/spec/spec-phase-4.md"}
-{"type":"phase","id":"phase-5","name":"Hardening","depends_on":["phase-3"],"risk":"medium","value":"Comprehensive security test suite, documentation, and release-ready binary","spec":"docs/mcp-filesystem-rs/spec/spec-phase-5.md"}

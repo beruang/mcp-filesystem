@@ -1,6 +1,0 @@
-{"type":"confidence_score","dimension":"problem_clarity","score":19,"max":20,"reason":"Clear need for secure sandboxed MCP filesystem server; 'why build this vs use existing' is implicit from the detailed security requirements but not explicitly stated as a comparison."}
-{"type":"confidence_score","dimension":"goal_definition","score":20,"max":20,"reason":"Six explicit priorities, 13 fully-specified tool contracts with input/output schemas, concrete Rust type definitions, and complete sandbox API surface."}
-{"type":"confidence_score","dimension":"success_criteria","score":19,"max":20,"reason":"Ten release criteria in spec section 20 are binary-testable. Validation commands (cargo test, cargo clippy) implied but not enumerated in the spec itself."}
-{"type":"confidence_score","dimension":"scope_boundaries","score":20,"max":20,"reason":"Non-goals enumerated in section 2; five-phase milestone breakdown; explicit in/out per tool category; explicit deferrals with reasons."}
-{"type":"confidence_score","dimension":"consistency","score":19,"max":20,"reason":"Minor: followSymlinks appears in config example (section 9.3) but not in the formal config specification (section 16). All other cross-references are internally consistent."}
-{"type":"confidence_total","score":97,"max":100,"threshold":95,"action":"generate_contract"}
