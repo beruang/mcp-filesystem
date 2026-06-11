@@ -1,3 +1,113 @@
+# ── Rust ────────────────────────────────────────────────────────────────────
 /target
 **/*.rs.bk
+*.pdb
+
+# ── macOS ───────────────────────────────────────────────────────────────────
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ── Linux ───────────────────────────────────────────────────────────────────
+*~
+.directory
+.Trash-*
+
+# ── IDE / Editor ────────────────────────────────────────────────────────────
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+*.vsix
+
+# JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim
+*.swp
+*.swo
+*.swn
+*.un~
+Session.vim
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.\#*
+*_archive
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# Zed
+.zed/
+
+# ── Environment ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# ── Secrets / Credentials ───────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+credentials.json
+service-account.json
+secrets.yaml
+secrets.yml
+
+# ── Build / Distribution ────────────────────────────────────────────────────
+/dist
+/pkg
+*.tar.gz
+*.zip
+*.dmg
+
+# ── Coverage / Profiling ────────────────────────────────────────────────────
+/coverage
+*.profraw
+*.profdata
+tarpaulin-report.*
+lcov.info
+
+# ── macOS bundling artifacts ────────────────────────────────────────────────
+*.dSYM
+*.dSYM.zip
+
+# ── Temporary / Cache ───────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.cache
+*.log
+.cache/
+tmp/
+
+# ── Docker (keep Dockerfiles, ignore build context) ─────────────────────────
+Dockerfile.*.built
+
+# ── Alternative build tools ─────────────────────────────────────────────────
+bazel-*
+buck-out/
+build/
