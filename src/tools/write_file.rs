@@ -74,3 +74,80 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
     serde_json::to_value(WriteFileOutput { path: normalized.display().to_string(), bytes_written })
         .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let dir = std::env::temp_dir().join(format!("wf-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        assert_eq!(definition().name, "write_file");
+    }
+
+    #[test]
+    fn test_execute_no_content() {
+        let (dir, sandbox, config) = setup();
+        let result =
+            execute(&sandbox, &config, json!({"path": dir.join("x.txt").display().to_string()}));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_overwrite() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("overwrite.txt");
+        fs::write(&file, "old").unwrap();
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({"path": file.display().to_string(), "content": "new"}),
+        )
+        .unwrap();
+        assert_eq!(result["bytesWritten"], 3);
+        assert_eq!(fs::read_to_string(&file).unwrap(), "new");
+    }
+
+    #[test]
+    fn test_execute_no_create_parents_missing() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("missing_parent/file.txt");
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({"path": file.display().to_string(), "content": "x", "createParents": false}),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_outside_root() {
+        let (_dir, sandbox, config) = setup();
+        let outside = std::env::temp_dir().join(format!("outside-wf-{}", std::process::id()));
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({"path": outside.join("x.txt").display().to_string(), "content": "x"}),
+        );
+        assert!(result.is_err());
+    }
+}

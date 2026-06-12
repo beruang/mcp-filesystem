@@ -218,3 +218,189 @@ impl Sandbox {
         matching.first().copied().cloned()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    use super::*;
+    use std::fs;
+
+    fn temp_root() -> (PathBuf, AllowedRoot) {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("sb-test-{}-{}", std::process::id(), n));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let root = AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite };
+        (dir, root)
+    }
+
+    #[test]
+    fn test_root_mode_ensure_access_read_ok() {
+        let root = AllowedRoot {
+            original: PathBuf::from("/x"),
+            canonical: PathBuf::from("/x"),
+            mode: RootMode::ReadOnly,
+        };
+        assert!(root.ensure_access(AccessKind::Read).is_ok());
+        let root = AllowedRoot {
+            original: PathBuf::from("/x"),
+            canonical: PathBuf::from("/x"),
+            mode: RootMode::ReadWrite,
+        };
+        assert!(root.ensure_access(AccessKind::Read).is_ok());
+    }
+
+    #[test]
+    fn test_root_mode_ensure_access_write_rejected() {
+        let root = AllowedRoot {
+            original: PathBuf::from("/x"),
+            canonical: PathBuf::from("/x"),
+            mode: RootMode::ReadOnly,
+        };
+        assert!(root.ensure_access(AccessKind::Write).is_err());
+    }
+
+    #[test]
+    fn test_root_mode_ensure_access_write_ok() {
+        let root = AllowedRoot {
+            original: PathBuf::from("/x"),
+            canonical: PathBuf::from("/x"),
+            mode: RootMode::ReadWrite,
+        };
+        assert!(root.ensure_access(AccessKind::Write).is_ok());
+    }
+
+    #[test]
+    fn test_root_depth() {
+        let root = AllowedRoot {
+            original: PathBuf::from("/x"),
+            canonical: PathBuf::from("/a/b/c"),
+            mode: RootMode::ReadWrite,
+        };
+        assert_eq!(root.depth(), 4);
+    }
+
+    #[test]
+    fn test_sandbox_new_empty() {
+        let sb = Sandbox::new(vec![], None);
+        assert!(sb.workspace_root().is_none());
+        assert!(!sb.has_single_root());
+        assert!(sb.list_allowed_directories().is_empty());
+    }
+
+    #[test]
+    fn test_sandbox_new_single_root() {
+        let (dir, root) = temp_root();
+        let sb = Sandbox::new(vec![root], Some(dir));
+        assert!(sb.has_single_root());
+        assert!(sb.workspace_root().is_some());
+        assert_eq!(sb.list_allowed_directories().len(), 1);
+    }
+
+    #[test]
+    fn test_find_best_matching_root_exact() {
+        let (dir, root) = temp_root();
+        let root_canonical = root.canonical.clone();
+        let sb = Sandbox::new(vec![root], Some(dir));
+        let found = sb.find_best_matching_root(&root_canonical);
+        assert!(found.is_some());
+    }
+
+    #[test]
+    fn test_find_best_matching_root_child() {
+        let (dir, root) = temp_root();
+        let child = dir.join("child");
+        fs::create_dir_all(&child).unwrap();
+        let child_canonical = fs::canonicalize(&child).unwrap();
+        let sb = Sandbox::new(vec![root], Some(dir));
+        let found = sb.find_best_matching_root(&child_canonical);
+        assert!(found.is_some());
+    }
+
+    #[test]
+    fn test_find_best_matching_root_outside() {
+        let (dir, root) = temp_root();
+        let sb = Sandbox::new(vec![root], Some(dir));
+        let found = sb.find_best_matching_root(Path::new("/etc"));
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn test_find_best_matching_root_most_specific() {
+        let (broad_dir, broad_root) = temp_root();
+        let narrow_dir = broad_dir.join("narrow");
+        fs::create_dir_all(&narrow_dir).unwrap();
+        let narrow_canonical = fs::canonicalize(&narrow_dir).unwrap();
+        let narrow_root = AllowedRoot {
+            original: narrow_dir.clone(),
+            canonical: narrow_canonical,
+            mode: RootMode::ReadWrite,
+        };
+
+        let sb = Sandbox::new(
+            vec![broad_root, AllowedRoot { mode: RootMode::ReadOnly, ..narrow_root }],
+            None,
+        );
+
+        let file = narrow_dir.join("file.txt");
+        fs::write(&file, "data").unwrap();
+        let found = sb.find_best_matching_root(&fs::canonicalize(&file).unwrap()).unwrap();
+        // Most specific = narrow
+        assert_eq!(found.mode, RootMode::ReadOnly);
+    }
+
+    #[test]
+    fn test_assert_child_is_allowed_ok() {
+        let (_dir, root) = temp_root();
+        let root_canonical = root.canonical.clone();
+        let sb = Sandbox::new(vec![root], None);
+        let result = sb.assert_child_is_allowed(&root_canonical, AccessKind::Read);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_assert_child_is_allowed_outside() {
+        let (_dir, root) = temp_root();
+        let sb = Sandbox::new(vec![root], None);
+        let result = sb.assert_child_is_allowed(Path::new("/etc"), AccessKind::Read);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_create_write_empty_path() {
+        let (dir, root) = temp_root();
+        let sb = Sandbox::new(vec![root], Some(dir));
+        let result = sb.resolve_create_write(Path::new(""));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_create_write_no_parent() {
+        let (_dir, root) = temp_root();
+        // A path with no parent (just "/") would be the root itself
+        let sb = Sandbox::new(vec![root], None);
+        let result = sb.resolve_create_write(Path::new("/"));
+        assert!(result.is_err()); // root "/" has no parent
+    }
+
+    #[test]
+    fn test_resolve_existing_read_not_found() {
+        let (dir, root) = temp_root();
+        let sb = Sandbox::new(vec![root], Some(dir.clone()));
+        let nonexistent = dir.join("nonexistent.txt");
+        let result = sb.resolve_existing_read(&nonexistent);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_workspace_root_multi_root() {
+        let (_dir1, root1) = temp_root();
+        let dir2 = std::env::temp_dir().join(format!("sb-test-multi-{}", std::process::id()));
+        fs::create_dir_all(&dir2).unwrap();
+        let canonical2 = fs::canonicalize(&dir2).unwrap();
+        let root2 = AllowedRoot { original: dir2, canonical: canonical2, mode: RootMode::ReadOnly };
+        let sb = Sandbox::new(vec![root1, root2], None);
+        assert!(sb.workspace_root().is_none());
+    }
+}

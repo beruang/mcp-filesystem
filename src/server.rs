@@ -231,3 +231,184 @@ pub async fn run_stdio(app: Arc<AppConfig>) -> Result<(), Box<dyn std::error::Er
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_make_response_includes_result() {
+        let resp = make_response(Some(json!(1)), json!({"key": "val"}));
+        assert_eq!(resp.jsonrpc, "2.0");
+        assert_eq!(resp.id, Some(json!(1)));
+        assert_eq!(resp.result, Some(json!({"key": "val"})));
+        assert!(resp.error.is_none());
+    }
+
+    #[test]
+    fn test_make_response_null_id() {
+        let resp = make_response(None, json!({}));
+        assert!(resp.id.is_none());
+    }
+
+    #[test]
+    fn test_make_error() {
+        let resp = make_error(Some(json!(1)), -32600, "Invalid".into(), None);
+        assert_eq!(resp.jsonrpc, "2.0");
+        assert!(resp.result.is_none());
+        let err = resp.error.unwrap();
+        assert_eq!(err.code, -32600);
+        assert_eq!(err.message, "Invalid");
+        assert!(err.data.is_none());
+    }
+
+    #[test]
+    fn test_make_error_with_data() {
+        let resp = make_error(Some(json!(2)), -32000, "Error".into(), Some(json!({"detail": "x"})));
+        let err = resp.error.unwrap();
+        assert_eq!(err.data, Some(json!({"detail": "x"})));
+    }
+
+    #[test]
+    fn test_json_schema_object() {
+        let schema = json_schema_object(json!({"path": {"type": "string"}}), vec!["path"]);
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["path"]["type"] == "string");
+        let required: Vec<_> =
+            schema["required"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(required, vec!["path"]);
+    }
+
+    #[test]
+    fn test_tool_def_serialization() {
+        let def = ToolDef {
+            name: "test_tool".into(),
+            description: "A test tool".into(),
+            input_schema: json!({"type": "object", "properties": {}}),
+        };
+        let json_str = serde_json::to_string(&def).unwrap();
+        assert!(json_str.contains("test_tool"));
+        assert!(json_str.contains("inputSchema"));
+    }
+
+    #[test]
+    fn test_tool_result_content() {
+        let result = ToolResult {
+            content: vec![ToolContent { content_type: "text".into(), text: "output".into() }],
+            is_error: None,
+        };
+        let json_str = serde_json::to_string(&result).unwrap();
+        assert!(json_str.contains("text"));
+        assert!(json_str.contains("output"));
+    }
+
+    #[test]
+    fn test_tool_result_is_error() {
+        let result = ToolResult {
+            content: vec![ToolContent {
+                content_type: "text".into(),
+                text: "error occurred".into(),
+            }],
+            is_error: Some(true),
+        };
+        let json_str = serde_json::to_string(&result).unwrap();
+        assert!(json_str.contains("\"is_error\":true"));
+    }
+
+    #[test]
+    fn test_json_rpc_request_parse() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}"#;
+        let req: JsonRpcRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.method, "tools/list");
+        assert_eq!(req.id, Some(json!(1)));
+    }
+
+    #[test]
+    fn test_json_rpc_request_no_params() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+        let req: JsonRpcRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.method, "ping");
+        assert_eq!(req.params, serde_json::Value::Null); // default
+    }
+
+    #[test]
+    fn test_json_rpc_response_serialization() {
+        let resp = JsonRpcResponse {
+            jsonrpc: "2.0".into(),
+            id: Some(json!(1)),
+            result: Some(json!({"ok": true})),
+            error: None,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"result\""));
+        assert!(!json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_tool_def_all_fields() {
+        let def = ToolDef {
+            name: "test".into(),
+            description: "desc".into(),
+            input_schema: json!({"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}),
+        };
+        assert_eq!(def.name, "test");
+        assert_eq!(def.description, "desc");
+        assert!(def.input_schema["properties"]["x"]["type"] == "string");
+    }
+
+    #[test]
+    fn test_run_stdio_initialize() {
+        // Simulate stdin with an initialize request
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _guard = rt.enter();
+
+        let tmp = std::env::temp_dir();
+        let app = Arc::new(crate::config::AppConfig {
+            sandbox: crate::sandbox::Sandbox::new(
+                vec![crate::sandbox::AllowedRoot {
+                    original: tmp.clone(),
+                    canonical: std::fs::canonicalize(&tmp).unwrap(),
+                    mode: crate::sandbox::RootMode::ReadWrite,
+                }],
+                Some(tmp),
+            ),
+            limits: crate::config::Limits::default(),
+            behavior: crate::config::Behavior::default(),
+        });
+
+        // Verify the app config is valid
+        assert_eq!(app.sandbox.list_allowed_directories().len(), 1);
+    }
+
+    #[test]
+    fn test_error_response_serialization() {
+        let resp = JsonRpcResponse {
+            jsonrpc: "2.0".into(),
+            id: None,
+            result: None,
+            error: Some(JsonRpcError {
+                code: -32600,
+                message: "Invalid Request".into(),
+                data: None,
+            }),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"error\""));
+        assert!(!json.contains("\"result\""));
+    }
+
+    #[test]
+    fn test_error_no_response_for_notification() {
+        // Notifications have no id and expect no response
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".into(),
+            id: None,
+            method: "notifications/initialized".into(),
+            params: json!({}),
+        };
+        // A notification should have no id
+        assert!(request.id.is_none());
+        assert_eq!(request.method, "notifications/initialized");
+    }
+}

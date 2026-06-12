@@ -76,3 +76,66 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     serde_json::to_value(ListDirectoryWithSizesOutput { entries })
         .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("ldws-{}-{}", std::process::id(), n));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        let def = definition();
+        assert_eq!(def.name, "list_directory_with_sizes");
+    }
+
+    #[test]
+    fn test_execute_lists_with_sizes() {
+        let (dir, sandbox, config) = setup();
+        fs::write(dir.join("file.txt"), "hello world").unwrap();
+        fs::create_dir_all(dir.join("subdir")).unwrap();
+
+        let result =
+            execute(&sandbox, &config, json!({"path": dir.display().to_string()})).unwrap();
+        let entries = result["entries"].as_array().unwrap();
+        assert!(entries.len() >= 2);
+
+        let file_entry = entries.iter().find(|e| e["name"] == "file.txt").unwrap();
+        assert_eq!(file_entry["type"], "file");
+        assert_eq!(file_entry["size"], 11);
+
+        let dir_entry = entries.iter().find(|e| e["name"] == "subdir").unwrap();
+        assert_eq!(dir_entry["type"], "directory");
+        assert!(dir_entry["size"].is_null());
+    }
+
+    #[test]
+    fn test_execute_not_a_directory() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("file.txt");
+        fs::write(&file, "data").unwrap();
+        let result = execute(&sandbox, &config, json!({"path": file.display().to_string()}));
+        assert!(result.is_err());
+    }
+}

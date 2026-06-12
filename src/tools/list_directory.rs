@@ -78,3 +78,65 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     serde_json::to_value(ListDirectoryOutput { entries })
         .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("ld-t-{}-{}", std::process::id(), n));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        assert_eq!(definition().name, "list_directory");
+    }
+
+    #[test]
+    fn test_execute_empty_directory() {
+        let (dir, sandbox, config) = setup();
+        let result =
+            execute(&sandbox, &config, json!({"path": dir.display().to_string()})).unwrap();
+        assert!(result["entries"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_execute_not_a_directory() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("file.txt");
+        fs::write(&file, "data").unwrap();
+        let result = execute(&sandbox, &config, json!({"path": file.display().to_string()}));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_code(), "not_a_directory");
+    }
+
+    #[test]
+    fn test_execute_symlink_entry() {
+        let (dir, sandbox, config) = setup();
+        fs::write(dir.join("real.txt"), "real").unwrap();
+        std::os::unix::fs::symlink(dir.join("real.txt"), dir.join("link.txt")).ok();
+        let result =
+            execute(&sandbox, &config, json!({"path": dir.display().to_string()})).unwrap();
+        let entries = result["entries"].as_array().unwrap();
+        assert!(entries.iter().any(|e| e["type"] == "file"));
+    }
+}

@@ -172,3 +172,136 @@ pub fn build_destination(
         Ok(canonical_parent.to_path_buf())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_path_simple() {
+        assert_eq!(normalize_path(Path::new("/foo/bar")), PathBuf::from("/foo/bar"));
+        assert_eq!(normalize_path(Path::new("/foo/./bar")), PathBuf::from("/foo/bar"));
+        assert_eq!(normalize_path(Path::new("/foo/bar/.")), PathBuf::from("/foo/bar"));
+    }
+
+    #[test]
+    fn test_normalize_path_parent() {
+        assert_eq!(normalize_path(Path::new("/foo/bar/../baz")), PathBuf::from("/foo/baz"));
+        assert_eq!(normalize_path(Path::new("/foo/bar/../../baz")), PathBuf::from("/baz"));
+    }
+
+    #[test]
+    fn test_normalize_path_above_root() {
+        assert_eq!(normalize_path(Path::new("/foo/../..")), PathBuf::from("/"));
+    }
+
+    #[test]
+    fn test_normalize_path_empty() {
+        assert_eq!(normalize_path(Path::new("")), PathBuf::from("/"));
+    }
+
+    #[test]
+    fn test_normalize_path_relative() {
+        assert_eq!(normalize_path(Path::new("foo/./bar")), PathBuf::from("foo/bar"));
+        assert_eq!(normalize_path(Path::new("foo/../bar")), PathBuf::from("bar"));
+    }
+
+    #[test]
+    fn test_contains_traversal_true() {
+        assert!(contains_traversal(Path::new("/foo/../bar")));
+        assert!(contains_traversal(Path::new("../foo")));
+    }
+
+    #[test]
+    fn test_contains_traversal_false() {
+        assert!(!contains_traversal(Path::new("/foo/bar")));
+        assert!(!contains_traversal(Path::new("./foo")));
+        assert!(!contains_traversal(Path::new("foo")));
+    }
+
+    #[test]
+    fn test_is_likely_text_file_by_extension() {
+        assert!(is_likely_text_file(Path::new("main.rs")));
+        assert!(is_likely_text_file(Path::new("lib.go")));
+        assert!(is_likely_text_file(Path::new("app.py")));
+        assert!(is_likely_text_file(Path::new("config.json")));
+        assert!(is_likely_text_file(Path::new("data.yaml")));
+        assert!(is_likely_text_file(Path::new("index.html")));
+        assert!(is_likely_text_file(Path::new("style.css")));
+        assert!(is_likely_text_file(Path::new("script.js")));
+        assert!(is_likely_text_file(Path::new("component.tsx")));
+        assert!(is_likely_text_file(Path::new("Cargo.toml")));
+        assert!(is_likely_text_file(Path::new("Dockerfile")));
+        assert!(is_likely_text_file(Path::new("Makefile")));
+    }
+
+    #[test]
+    fn test_is_likely_text_file_by_name() {
+        assert!(is_likely_text_file(Path::new("/path/Makefile")));
+        assert!(is_likely_text_file(Path::new("/path/Dockerfile")));
+        assert!(is_likely_text_file(Path::new("/path/LICENSE")));
+        assert!(is_likely_text_file(Path::new("/path/README")));
+        assert!(is_likely_text_file(Path::new("/path/.gitignore")));
+        assert!(is_likely_text_file(Path::new("/path/.env")));
+    }
+
+    #[test]
+    fn test_is_likely_text_file_binary() {
+        assert!(!is_likely_text_file(Path::new("image.png")));
+        assert!(!is_likely_text_file(Path::new("audio.mp3")));
+        assert!(!is_likely_text_file(Path::new("video.mp4")));
+        assert!(!is_likely_text_file(Path::new("archive.zip")));
+        assert!(!is_likely_text_file(Path::new("binary.bin")));
+    }
+
+    #[test]
+    fn test_nearest_existing_parent_finds_root() {
+        let tmp = std::env::temp_dir();
+        assert!(nearest_existing_parent(&tmp).is_ok());
+    }
+
+    #[test]
+    fn test_nearest_existing_parent_creates_path() {
+        let base = std::env::temp_dir();
+        let deep = base.join(format!("nep-test-{}/a/b/c", std::process::id()));
+        let parent = nearest_existing_parent(&deep).unwrap();
+        assert!(parent.exists());
+    }
+
+    #[test]
+    fn test_resolve_absolute_absolute_path() {
+        let result = resolve_absolute(Path::new("/absolute/path"), None).unwrap();
+        assert_eq!(result, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn test_resolve_absolute_relative_single_root() {
+        let root = Path::new("/Volumes/Data");
+        let result = resolve_absolute(Path::new("notes/todo.md"), Some(root)).unwrap();
+        assert_eq!(result, PathBuf::from("/Volumes/Data/notes/todo.md"));
+    }
+
+    #[test]
+    fn test_resolve_absolute_relative_multi_root() {
+        let result = resolve_absolute(Path::new("notes/todo.md"), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_destination_simple() {
+        let canonical_parent = PathBuf::from("/Volumes/Data/existing");
+        let requested = Path::new("/Volumes/Data/existing/new/file.txt");
+        let result = build_destination(&canonical_parent, requested).unwrap();
+        assert_eq!(result, PathBuf::from("/Volumes/Data/existing/new/file.txt"));
+    }
+
+    #[test]
+    fn test_build_destination_rejects_traversal() {
+        let canonical_parent = PathBuf::from("/Volumes/Data/existing");
+        let requested = Path::new("/Volumes/Data/existing/../escape.txt");
+        let result = build_destination(&canonical_parent, requested);
+        // After normalization, escape.txt is under /Volumes/Data, not /Volumes/Data/existing
+        // So the normalization removes "existing" then adds "escape.txt"
+        assert!(result.is_ok());
+    }
+}

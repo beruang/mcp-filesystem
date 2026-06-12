@@ -58,3 +58,59 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     serde_json::to_value(ReadMediaFileOutput { mime_type, data })
         .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let dir = std::env::temp_dir().join(format!("rmf-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        assert_eq!(definition().name, "read_media_file");
+    }
+
+    #[test]
+    fn test_execute_not_a_file() {
+        let (dir, sandbox, config) = setup();
+        let result = execute(&sandbox, &config, json!({"path": dir.display().to_string()}));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_code(), "not_a_file");
+    }
+
+    #[test]
+    fn test_execute_invalid_path() {
+        let (_dir, sandbox, config) = setup();
+        let result = execute(&sandbox, &config, json!({"path": ""}));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_jpeg_mime() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("photo.jpg");
+        fs::write(&file, [0xFF, 0xD8, 0xFF, 0xE0]).unwrap();
+        let result =
+            execute(&sandbox, &config, json!({"path": file.display().to_string()})).unwrap();
+        assert_eq!(result["mimeType"], "image/jpeg");
+        assert!(!result["data"].as_str().unwrap().is_empty());
+    }
+}

@@ -133,3 +133,158 @@ fn generate_diff(original: &str, modified: &str) -> String {
     let diff = TextDiff::from_lines(original, modified);
     diff.unified_diff().context_radius(3).to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("ef-{}-{}", std::process::id(), n));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        assert_eq!(definition().name, "edit_file");
+    }
+
+    #[test]
+    fn test_execute_multiple_edits() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("multi.txt");
+        fs::write(&file, "hello world\n").unwrap();
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({
+                "path": file.display().to_string(),
+                "edits": [
+                    {"oldText": "hello", "newText": "hi", "replaceAll": false},
+                    {"oldText": "world", "newText": "there", "replaceAll": false}
+                ],
+                "dryRun": true
+            }),
+        )
+        .unwrap();
+        assert!(result["changed"].as_bool().unwrap());
+        let diff = result["diff"].as_str().unwrap();
+        assert!(diff.contains("hello") && diff.contains("hi"));
+    }
+
+    #[test]
+    fn test_execute_no_changes() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("same.txt");
+        fs::write(&file, "unchanged\n").unwrap();
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({
+                "path": file.display().to_string(),
+                "edits": [{"oldText": "unchanged", "newText": "unchanged", "replaceAll": false}],
+                "dryRun": true
+            }),
+        )
+        .unwrap();
+        assert!(!result["changed"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_execute_invalid_path() {
+        let (_dir, sandbox, config) = setup();
+        let result = execute(&sandbox, &config, json!({"path": "", "edits": []}));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_no_edits() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("noedits.txt");
+        fs::write(&file, "content\n").unwrap();
+        let _result = execute(
+            &sandbox,
+            &config,
+            json!({
+                "path": file.display().to_string(),
+                "edits": [{"oldText": "content", "newText": "updated", "replaceAll": false}],
+                "dryRun": false
+            }),
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), "updated\n");
+    }
+
+    #[test]
+    fn test_execute_readonly_root() {
+        let dir = std::env::temp_dir().join(format!("ef-ro-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("ro.txt");
+        fs::write(&file, "data").unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir, canonical, mode: RootMode::ReadOnly }],
+            None,
+        );
+        let config =
+            AppConfig { sandbox, limits: Limits::default(), behavior: Behavior::default() };
+        let result = execute(
+            &config.sandbox,
+            &config,
+            json!({
+                "path": file.display().to_string(),
+                "edits": [{"oldText": "data", "newText": "changed", "replaceAll": false}],
+                "dryRun": true
+            }),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_not_a_file() {
+        let (dir, sandbox, config) = setup();
+        let result =
+            execute(&sandbox, &config, json!({"path": dir.display().to_string(), "edits": []}));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_code(), "not_a_file");
+    }
+
+    #[test]
+    fn test_execute_large_file() {
+        let (dir, _sandbox, config) = setup();
+        let file = dir.join("large.txt");
+        let content = "x".repeat(1000);
+        fs::write(&file, &content).unwrap();
+        let limits = Limits { max_edit_bytes: 10, ..Limits::default() };
+        let config_small =
+            AppConfig { sandbox: config.sandbox, limits, behavior: Behavior::default() };
+        let result = execute(
+            &config_small.sandbox,
+            &config_small,
+            json!({
+                "path": file.display().to_string(),
+                "edits": [{"oldText": "x", "newText": "y", "replaceAll": true}],
+                "dryRun": true
+            }),
+        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_code(), "file_too_large");
+    }
+}

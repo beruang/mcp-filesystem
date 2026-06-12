@@ -61,3 +61,67 @@ pub fn execute(sandbox: &Sandbox, _config: &AppConfig, params: Value) -> Result<
     })
     .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let dir = std::env::temp_dir().join(format!("mv-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        assert_eq!(definition().name, "move_file");
+    }
+
+    #[test]
+    fn test_execute_source_not_found() {
+        let (dir, sandbox, config) = setup();
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({
+                "source": dir.join("nope.txt").display().to_string(),
+                "destination": dir.join("dest.txt").display().to_string(),
+            }),
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_invalid_source() {
+        let (_dir, sandbox, config) = setup();
+        let result = execute(&sandbox, &config, json!({"source": "", "destination": "/tmp/x"}));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_invalid_destination() {
+        let (dir, sandbox, config) = setup();
+        let src = dir.join("src.txt");
+        fs::write(&src, "x").unwrap();
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({"source": src.display().to_string(), "destination": ""}),
+        );
+        assert!(result.is_err());
+    }
+}

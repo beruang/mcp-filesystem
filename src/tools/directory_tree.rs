@@ -124,3 +124,57 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     })
     .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let dir = std::env::temp_dir().join(format!("dt-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        assert_eq!(definition().name, "directory_tree");
+    }
+
+    #[test]
+    fn test_execute_not_a_directory() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("test.txt");
+        fs::write(&file, "data").unwrap();
+        let result = execute(&sandbox, &config, json!({"path": file.display().to_string()}));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_code(), "not_a_directory");
+    }
+
+    #[test]
+    fn test_execute_with_max_depth() {
+        let (dir, sandbox, config) = setup();
+        let deep = dir.join("a/b/c/d");
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(deep.join("file.txt"), "x").unwrap();
+        let result =
+            execute(&sandbox, &config, json!({"path": dir.display().to_string(), "maxDepth": 1}))
+                .unwrap();
+        let children = result["children"].as_array().unwrap();
+        // At depth 1, we should see "a" but not descend into it
+        assert!(!children.is_empty());
+    }
+}

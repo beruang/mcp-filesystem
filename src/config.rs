@@ -262,3 +262,233 @@ pub fn load_config(cli: Cli) -> Result<AppConfig, String> {
 
     Ok(AppConfig { sandbox, limits, behavior })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    use super::*;
+
+    fn temp_config_file(json: &serde_json::Value) -> PathBuf {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("mcp-cfg-test-{}-{}", std::process::id(), n));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        let content = serde_json::to_string(json).unwrap();
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_root_mode_parse_ro() {
+        assert_eq!(RootMode::parse("ro"), Some(RootMode::ReadOnly));
+        assert_eq!(RootMode::parse("readonly"), Some(RootMode::ReadOnly));
+        assert_eq!(RootMode::parse("read_only"), Some(RootMode::ReadOnly));
+        assert_eq!(RootMode::parse("read-only"), Some(RootMode::ReadOnly));
+    }
+
+    #[test]
+    fn test_root_mode_parse_rw() {
+        assert_eq!(RootMode::parse("rw"), Some(RootMode::ReadWrite));
+        assert_eq!(RootMode::parse("readwrite"), Some(RootMode::ReadWrite));
+        assert_eq!(RootMode::parse("read_write"), Some(RootMode::ReadWrite));
+        assert_eq!(RootMode::parse("read-write"), Some(RootMode::ReadWrite));
+    }
+
+    #[test]
+    fn test_root_mode_parse_invalid() {
+        assert_eq!(RootMode::parse(""), None);
+        assert_eq!(RootMode::parse("write"), None);
+        assert_eq!(RootMode::parse("read"), None);
+        assert_eq!(RootMode::parse("none"), None);
+    }
+
+    #[test]
+    fn test_limits_default() {
+        let limits = Limits::default();
+        assert_eq!(limits.max_read_bytes, 10 * 1024 * 1024);
+        assert_eq!(limits.max_edit_bytes, 10 * 1024 * 1024);
+        assert_eq!(limits.max_search_results, 1000);
+        assert_eq!(limits.max_directory_entries, 10_000);
+        assert_eq!(limits.max_tree_depth, 20);
+    }
+
+    #[test]
+    fn test_behavior_default() {
+        let b = Behavior::default();
+        assert!(b.allow_relative_paths);
+        assert!(!b.follow_symlinked_directories);
+        assert!(b.dry_run_edits_by_default);
+    }
+
+    #[test]
+    fn test_parse_root_arg_default_mode() {
+        let tmp = std::env::temp_dir();
+        let root = parse_root_arg(&tmp.display().to_string()).unwrap();
+        assert_eq!(root.mode, RootMode::ReadWrite);
+        assert!(root.canonical.is_dir());
+    }
+
+    #[test]
+    fn test_parse_root_arg_explicit_ro() {
+        let tmp = std::env::temp_dir();
+        let arg = format!("{}:ro", tmp.display());
+        let root = parse_root_arg(&arg).unwrap();
+        assert_eq!(root.mode, RootMode::ReadOnly);
+    }
+
+    #[test]
+    fn test_parse_root_arg_explicit_rw() {
+        let tmp = std::env::temp_dir();
+        let arg = format!("{}:rw", tmp.display());
+        let root = parse_root_arg(&arg).unwrap();
+        assert_eq!(root.mode, RootMode::ReadWrite);
+    }
+
+    #[test]
+    fn test_parse_root_arg_invalid_mode() {
+        let tmp = std::env::temp_dir();
+        let arg = format!("{}:bad", tmp.display());
+        assert!(parse_root_arg(&arg).is_err());
+    }
+
+    #[test]
+    fn test_parse_root_arg_nonexistent() {
+        let arg = "/nonexistent/path/12345";
+        assert!(parse_root_arg(arg).is_err());
+    }
+
+    #[test]
+    fn test_parse_root_arg_file_not_dir() {
+        let tmp = std::env::temp_dir().join(format!("file-{}", std::process::id()));
+        std::fs::write(&tmp, "data").unwrap();
+        assert!(parse_root_arg(&tmp.display().to_string()).is_err());
+    }
+
+    #[test]
+    fn test_load_config_requires_at_least_one_root() {
+        let cli = Cli {
+            roots: vec![],
+            config: None,
+            max_read_bytes: None,
+            max_search_results: None,
+            max_directory_entries: None,
+            log_level: "info".to_string(),
+            no_relative_paths: false,
+            allow_relative_paths: false,
+            positional_root: None,
+        };
+        let result = load_config(cli);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("at least one root"));
+    }
+
+    #[test]
+    fn test_load_config_positional_root() {
+        let tmp = std::env::temp_dir();
+        let cli = Cli {
+            roots: vec![],
+            config: None,
+            max_read_bytes: None,
+            max_search_results: None,
+            max_directory_entries: None,
+            log_level: "info".to_string(),
+            no_relative_paths: false,
+            allow_relative_paths: false,
+            positional_root: Some(tmp.display().to_string()),
+        };
+        let result = load_config(cli);
+        assert!(result.is_ok(), "{:?}", result.err());
+    }
+
+    #[test]
+    fn test_load_config_from_file() {
+        let tmp = std::env::temp_dir();
+        let config_path = temp_config_file(&serde_json::json!({
+            "roots": [{ "path": tmp.display().to_string(), "mode": "readOnly" }]
+        }));
+        let cli = Cli {
+            roots: vec![],
+            config: Some(config_path),
+            max_read_bytes: None,
+            max_search_results: None,
+            max_directory_entries: None,
+            log_level: "info".to_string(),
+            no_relative_paths: false,
+            allow_relative_paths: false,
+            positional_root: None,
+        };
+        let result = load_config(cli);
+        assert!(result.is_ok(), "{:?}", result.err());
+        let config = result.unwrap();
+        assert_eq!(config.sandbox.list_allowed_directories().len(), 1);
+    }
+
+    #[test]
+    fn test_load_config_from_file_with_limits() {
+        let tmp = std::env::temp_dir();
+        let config_path = temp_config_file(&serde_json::json!({
+            "roots": [{ "path": tmp.display().to_string(), "mode": "readWrite" }],
+            "limits": {
+                "maxReadBytes": 1024,
+                "maxSearchResults": 50,
+                "maxDirectoryEntries": 100,
+                "maxTreeDepth": 5
+            }
+        }));
+        let cli = Cli {
+            roots: vec![],
+            config: Some(config_path),
+            max_read_bytes: None,
+            max_search_results: None,
+            max_directory_entries: None,
+            log_level: "info".to_string(),
+            no_relative_paths: false,
+            allow_relative_paths: false,
+            positional_root: None,
+        };
+        let config = load_config(cli).unwrap();
+        assert_eq!(config.limits.max_read_bytes, 1024);
+        assert_eq!(config.limits.max_search_results, 50);
+        assert_eq!(config.limits.max_directory_entries, 100);
+        assert_eq!(config.limits.max_tree_depth, 5);
+    }
+
+    #[test]
+    fn test_cli_overrides_limits() {
+        let tmp = std::env::temp_dir();
+        let cli = Cli {
+            roots: vec![tmp.display().to_string()],
+            config: None,
+            max_read_bytes: Some(2048),
+            max_search_results: Some(500),
+            max_directory_entries: Some(2000),
+            log_level: "info".to_string(),
+            no_relative_paths: false,
+            allow_relative_paths: false,
+            positional_root: None,
+        };
+        let config = load_config(cli).unwrap();
+        assert_eq!(config.limits.max_read_bytes, 2048);
+        assert_eq!(config.limits.max_search_results, 500);
+        assert_eq!(config.limits.max_directory_entries, 2000);
+    }
+
+    #[test]
+    fn test_load_config_no_relative_paths() {
+        let tmp = std::env::temp_dir();
+        let cli = Cli {
+            roots: vec![tmp.display().to_string()],
+            config: None,
+            max_read_bytes: None,
+            max_search_results: None,
+            max_directory_entries: None,
+            log_level: "info".to_string(),
+            no_relative_paths: true,
+            allow_relative_paths: false,
+            positional_root: None,
+        };
+        let config = load_config(cli).unwrap();
+        assert!(!config.behavior.allow_relative_paths);
+    }
+}

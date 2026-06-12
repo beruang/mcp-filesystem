@@ -83,3 +83,74 @@ pub fn execute(sandbox: &Sandbox, config: &AppConfig, params: Value) -> Result<V
     serde_json::to_value(SearchFilesOutput { matches })
         .map_err(|e| FsError::SerializationError { message: e.to_string() })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AppConfig, Behavior, Limits};
+    use crate::sandbox::{AllowedRoot, RootMode, Sandbox};
+    use serde_json::json;
+    use std::fs;
+
+    fn setup() -> (std::path::PathBuf, Sandbox, AppConfig) {
+        let dir = std::env::temp_dir().join(format!("sf-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let canonical = fs::canonicalize(&dir).unwrap();
+        let sandbox = Sandbox::new(
+            vec![AllowedRoot { original: dir.clone(), canonical, mode: RootMode::ReadWrite }],
+            Some(dir.clone()),
+        );
+        let config = AppConfig {
+            sandbox: sandbox.clone(),
+            limits: Limits::default(),
+            behavior: Behavior::default(),
+        };
+        (dir, sandbox, config)
+    }
+
+    #[test]
+    fn test_definition() {
+        assert_eq!(definition().name, "search_files");
+    }
+
+    #[test]
+    fn test_execute_not_a_directory() {
+        let (dir, sandbox, config) = setup();
+        let file = dir.join("test.rs");
+        fs::write(&file, "// test").unwrap();
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({"path": file.display().to_string(), "pattern": "*.rs"}),
+        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().error_code(), "not_a_directory");
+    }
+
+    #[test]
+    fn test_execute_with_excludes() {
+        let (dir, sandbox, config) = setup();
+        fs::write(dir.join("a.rs"), "// a").unwrap();
+        fs::create_dir_all(dir.join("target")).unwrap();
+        fs::write(dir.join("target/b.rs"), "// b").unwrap();
+        let result = execute(
+            &sandbox,
+            &config,
+            json!({
+                "path": dir.display().to_string(),
+                "pattern": "*.rs",
+                "excludePatterns": ["**/*.txt"]
+            }),
+        )
+        .unwrap();
+        let matches = result["matches"].as_array().unwrap();
+        assert!(!matches.is_empty(), "got {matches:?}");
+    }
+
+    #[test]
+    fn test_execute_no_pattern() {
+        let (dir, sandbox, config) = setup();
+        let result = execute(&sandbox, &config, json!({"path": dir.display().to_string()}));
+        assert!(result.is_err());
+    }
+}

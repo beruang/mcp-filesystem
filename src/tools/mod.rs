@@ -38,3 +38,40 @@ pub fn tool_registry() -> Vec<(crate::server::ToolDef, ToolFn)> {
         (get_file_info::definition(), get_file_info::execute as ToolFn),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_registry_has_all_tools() {
+        let tools = tool_registry();
+        let names: Vec<&str> = tools.iter().map(|(d, _)| d.name.as_str()).collect();
+        assert!(names.contains(&"list_allowed_directories"));
+        assert!(names.contains(&"read_text_file"));
+        assert!(names.contains(&"read_media_file"));
+        assert!(names.contains(&"read_multiple_files"));
+        assert!(names.contains(&"write_file"));
+        assert!(names.contains(&"edit_file"));
+        assert!(names.contains(&"create_directory"));
+        assert!(names.contains(&"list_directory"));
+        assert!(names.contains(&"list_directory_with_sizes"));
+        assert!(names.contains(&"directory_tree"));
+        assert!(names.contains(&"move_file"));
+        assert!(names.contains(&"search_files"));
+        assert!(names.contains(&"get_file_info"));
+    }
+
+    #[test]
+    fn test_tool_registry_exact_count() {
+        assert_eq!(tool_registry().len(), 13);
+    }
+
+    #[test]
+    fn test_tool_registry_definitions_not_empty() {
+        for (def, _) in tool_registry() {
+            assert!(!def.name.is_empty(), "tool name empty");
+            assert!(!def.description.is_empty(), "tool {} description empty", def.name);
+        }
+    }
+}

@@ -134,3 +134,131 @@ impl From<std::io::Error> for FsError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mkpath(s: &str) -> PathBuf {
+        PathBuf::from(s)
+    }
+
+    #[test]
+    fn test_error_code_all_variants() {
+        assert_eq!(FsError::InvalidPath { path: mkpath("x") }.error_code(), "invalid_path");
+        assert_eq!(FsError::PathNotFound { path: mkpath("x") }.error_code(), "path_not_found");
+        assert_eq!(
+            FsError::OutsideAllowedRoots { path: mkpath("x") }.error_code(),
+            "outside_allowed_roots"
+        );
+        assert_eq!(
+            FsError::PermissionDenied { path: mkpath("x") }.error_code(),
+            "permission_denied"
+        );
+        assert_eq!(FsError::ReadOnlyRoot { path: mkpath("x") }.error_code(), "read_only_root");
+        assert_eq!(FsError::NotAFile { path: mkpath("x") }.error_code(), "not_a_file");
+        assert_eq!(FsError::NotADirectory { path: mkpath("x") }.error_code(), "not_a_directory");
+        assert_eq!(
+            FsError::FileTooLarge { path: mkpath("x"), size: 1, max: 2 }.error_code(),
+            "file_too_large"
+        );
+        assert_eq!(
+            FsError::BinaryFileNotSupported { path: mkpath("x") }.error_code(),
+            "binary_file_not_supported"
+        );
+        assert_eq!(FsError::TooManyResults { count: 1, max: 2 }.error_code(), "too_many_results");
+        assert_eq!(
+            FsError::AmbiguousRelativePath { reason: "r".into() }.error_code(),
+            "ambiguous_relative_path"
+        );
+        assert_eq!(
+            FsError::EditPatternNotFound { path: mkpath("x"), pattern: "p".into() }.error_code(),
+            "edit_pattern_not_found"
+        );
+        assert_eq!(
+            FsError::EditPatternAmbiguous { path: mkpath("x"), count: 3 }.error_code(),
+            "edit_pattern_ambiguous"
+        );
+        assert_eq!(FsError::IoError { message: "m".into() }.error_code(), "io_error");
+        assert_eq!(
+            FsError::SerializationError { message: "m".into() }.error_code(),
+            "serialization_error"
+        );
+        assert_eq!(
+            FsError::UnsupportedOperation { message: "m".into() }.error_code(),
+            "unsupported_operation"
+        );
+    }
+
+    #[test]
+    fn test_to_error_response_has_path() {
+        let e = FsError::OutsideAllowedRoots { path: mkpath("/etc/passwd") };
+        let r = e.to_error_response();
+        assert_eq!(r.code, "outside_allowed_roots");
+        assert_eq!(r.path, Some("/etc/passwd".into()));
+        assert!(r.pattern.is_none());
+        assert!(r.count.is_none());
+    }
+
+    #[test]
+    fn test_to_error_response_edit_pattern_not_found() {
+        let e = FsError::EditPatternNotFound { path: mkpath("f.txt"), pattern: "hello".into() };
+        let r = e.to_error_response();
+        assert_eq!(r.code, "edit_pattern_not_found");
+        assert_eq!(r.pattern, Some("hello".into()));
+    }
+
+    #[test]
+    fn test_to_error_response_edit_pattern_ambiguous() {
+        let e = FsError::EditPatternAmbiguous { path: mkpath("f.txt"), count: 5 };
+        let r = e.to_error_response();
+        assert_eq!(r.code, "edit_pattern_ambiguous");
+        assert_eq!(r.count, Some(5));
+    }
+
+    #[test]
+    fn test_to_error_response_no_path() {
+        let e = FsError::TooManyResults { count: 10, max: 5 };
+        let r = e.to_error_response();
+        assert_eq!(r.code, "too_many_results");
+        assert!(r.path.is_none());
+    }
+
+    #[test]
+    fn test_to_error_response_io_error() {
+        let e = FsError::IoError { message: "disk full".into() };
+        let r = e.to_error_response();
+        assert_eq!(r.code, "io_error");
+        assert!(r.path.is_none());
+        assert!(r.pattern.is_none());
+        assert!(r.count.is_none());
+    }
+
+    #[test]
+    fn test_display_formatting() {
+        let e = FsError::OutsideAllowedRoots { path: mkpath("/etc") };
+        assert!(e.to_string().contains("/etc"));
+        assert!(e.to_string().contains("outside allowed"));
+    }
+
+    #[test]
+    fn test_from_io_error_not_found() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
+        let fs_err = FsError::from(io_err);
+        assert!(matches!(fs_err, FsError::PathNotFound { .. }));
+    }
+
+    #[test]
+    fn test_from_io_error_permission_denied() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let fs_err = FsError::from(io_err);
+        assert!(matches!(fs_err, FsError::PermissionDenied { .. }));
+    }
+
+    #[test]
+    fn test_from_io_error_other() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists");
+        let fs_err = FsError::from(io_err);
+        assert!(matches!(fs_err, FsError::IoError { .. }));
+    }
+}
